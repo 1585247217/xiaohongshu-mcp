@@ -10,18 +10,17 @@ import (
 )
 
 // authMiddleware 静态 Bearer Token 鉴权中间件，Token 为空时关闭鉴权。
-func authMiddleware(token string) gin.HandlerFunc {
+func authMiddleware(token string, oauthServer *OAuthServer) gin.HandlerFunc {
 	expectedToken := []byte(token)
 
 	return func(c *gin.Context) {
-		if token == "" {
+		scheme, credentials, found := strings.Cut(c.GetHeader("Authorization"), " ")
+		credentials = strings.TrimLeft(credentials, " ")
+		if found && strings.EqualFold(scheme, "Bearer") && oauthServer != nil && oauthServer.validAccessToken(credentials) {
 			c.Next()
 			return
 		}
-
-		scheme, credentials, found := strings.Cut(c.GetHeader("Authorization"), " ")
-		credentials = strings.TrimLeft(credentials, " ")
-		if !found || !strings.EqualFold(scheme, "Bearer") ||
+		if token == "" || !found || !strings.EqualFold(scheme, "Bearer") ||
 			subtle.ConstantTimeCompare([]byte(credentials), expectedToken) != 1 {
 			c.Header("WWW-Authenticate", "Bearer")
 			respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未授权", nil)
