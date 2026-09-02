@@ -124,6 +124,8 @@ type ReplyNotificationArgs struct {
 	Content   string `json:"content" jsonschema:"回复内容"`
 }
 
+// ReadXHSShareArgs is defined in xhs_share_reader.go.
+
 // InitMCPServer 初始化 MCP Server
 func InitMCPServer(appServer *AppServer) *mcp.Server {
 	// 创建 MCP Server
@@ -548,7 +550,20 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		}),
 	)
 
-	logrus.Infof("Registered %d MCP tools", 18)
+	// 工具 19: 只读解析公开的小红书分享链接
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "read_xhs_share_link",
+			Description: "只读解析公开的小红书分享链接，返回标题、正文、作者、互动数据、首屏评论和图片直链；不需要登录，不会发布、评论、点赞或收藏。",
+			Annotations: &mcp.ToolAnnotations{
+				Title:        "Read Xiaohongshu Share Link",
+				ReadOnlyHint: true,
+			},
+		},
+		withPanicRecovery("read_xhs_share_link", readXHSShareLink),
+	)
+
+	logrus.Infof("Registered %d MCP tools", 19)
 }
 
 // convertToMCPResult 将自定义的 MCPToolResult 转换为官方 SDK 的格式
