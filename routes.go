@@ -23,6 +23,13 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
 	// 健康检查
 	router.GET("/health", healthHandler)
 
+	// OAuth 元数据与授权端点。仅在设置 OAUTH_USER_PASSWORD 和 OAUTH_SIGNING_SECRET 后启用。
+	router.GET("/.well-known/oauth-authorization-server", appServer.oauthServer.authorizationServerMetadata)
+	router.GET("/.well-known/oauth-protected-resource", appServer.oauthServer.protectedResourceMetadata)
+	router.GET("/oauth/authorize", appServer.oauthServer.authorize)
+	router.POST("/oauth/authorize", appServer.oauthServer.authorize)
+	router.POST("/oauth/token", appServer.oauthServer.token)
+
 	// MCP 端点 - 使用官方 SDK 的 Streamable HTTP Handler
 	mcpHandler := mcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *mcp.Server {
@@ -37,7 +44,7 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
 		},
 	)
 	protected := router.Group("")
-	protected.Use(authMiddleware(appServer.authToken))
+	protected.Use(authMiddleware(appServer.authToken, appServer.oauthServer))
 
 	protected.Any("/mcp", gin.WrapH(mcpHandler))
 	protected.Any("/mcp/*path", gin.WrapH(mcpHandler))
