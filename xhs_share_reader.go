@@ -92,7 +92,7 @@ func xhsCommentsFromState(state map[string]any) []any {
 	return nil
 }
 
-func readXHSShareLink(ctx context.Context, args ReadXHSShareArgs) (*mcp.CallToolResult, any, error) {
+func readXHSShareLink(ctx context.Context, _ *mcp.CallToolRequest, args ReadXHSShareArgs) (*mcp.CallToolResult, any, error) {
 	parsedURL, err := url.Parse(args.URL)
 	if err != nil || !isAllowedXHSURL(parsedURL) {
 		return &mcp.CallToolResult{
