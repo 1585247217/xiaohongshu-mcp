@@ -26,6 +26,9 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
 	// OAuth 元数据与授权端点。仅在设置 OAUTH_USER_PASSWORD 和 OAUTH_SIGNING_SECRET 后启用。
 	router.GET("/.well-known/oauth-authorization-server", appServer.oauthServer.authorizationServerMetadata)
 	router.GET("/.well-known/oauth-protected-resource", appServer.oauthServer.protectedResourceMetadata)
+	// RFC 9728 clients discover resource metadata at this path when the
+	// protected endpoint is /mcp.
+	router.GET("/.well-known/oauth-protected-resource/:resource", appServer.oauthServer.protectedResourceMetadata)
 	router.GET("/oauth/authorize", appServer.oauthServer.authorize)
 	router.POST("/oauth/authorize", appServer.oauthServer.authorize)
 	router.POST("/oauth/token", appServer.oauthServer.token)
