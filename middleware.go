@@ -14,6 +14,16 @@ func authMiddleware(token string, oauthServer *OAuthServer) gin.HandlerFunc {
 	expectedToken := []byte(token)
 
 	return func(c *gin.Context) {
+		// RFC 9728 discovery may use this path under the protected resource.
+		// It must stay reachable before authentication so OAuth clients can
+		// discover the authorization server after receiving a 401 response.
+		if c.Request.Method == http.MethodGet && c.Request.URL.Path == "/mcp/.well-known/oauth-protected-resource" &&
+			oauthServer != nil && oauthServer.enabled() {
+			oauthServer.protectedResourceMetadata(c)
+			c.Abort()
+			return
+		}
+
 		scheme, credentials, found := strings.Cut(c.GetHeader("Authorization"), " ")
 		credentials = strings.TrimLeft(credentials, " ")
 		if found && strings.EqualFold(scheme, "Bearer") && oauthServer != nil && oauthServer.validAccessToken(credentials) {
