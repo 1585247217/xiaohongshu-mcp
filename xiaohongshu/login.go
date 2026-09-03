@@ -133,7 +133,27 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 		}
 	}
 	if el == nil {
-		return "", false, errors.Wrap(err, "qrcode element not found")
+		// A/B variants sometimes paint the QR into a canvas instead of an img.
+		canvas, canvasErr := pp.Eval(`() => {
+			const el = document.querySelector('[class*=qrcode] canvas, [class*=qr-code] canvas, canvas[aria-label*=二维码]');
+			if (!el || !el.width || !el.height) return '';
+			try { return el.toDataURL('image/png'); } catch (_) { return ''; }
+		}`)
+		if canvasErr == nil && canvas.Value.String() != "" {
+			return canvas.Value.String(), false, nil
+		}
+
+		// Return a compact diagnostic instead of an opaque timeout so the next
+		// selector update can be based on the page actually served to Render.
+		pageURL := ""
+		if info, infoErr := pp.Info(); infoErr == nil {
+			pageURL = info.URL
+		}
+		bodyText := ""
+		if body, bodyErr := pp.Eval(`() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 500)`); bodyErr == nil {
+			bodyText = body.Value.String()
+		}
+		return "", false, errors.Wrapf(err, "qrcode element not found (url=%s, page=%q)", pageURL, bodyText)
 	}
 	src, err := el.Attribute("src")
 	if err != nil {
