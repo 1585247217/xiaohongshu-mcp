@@ -22,7 +22,7 @@ http.createServer(async (req, res) => {
   try {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    const response = await fetch(upstream, {
+    const options = {
       method: req.method,
       headers: {
         "authorization": `Bearer ${upstreamKey}`,
@@ -31,7 +31,13 @@ http.createServer(async (req, res) => {
         ...(req.headers["mcp-protocol-version"] ? { "mcp-protocol-version": req.headers["mcp-protocol-version"] } : {})
       },
       body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks)
-    });
+    };
+    let response;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      response = await fetch(upstream, options);
+      if (response.status !== 502 || attempt === 5) break;
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
     const headers = {};
     for (const name of ["content-type", "mcp-session-id"]) {
       const value = response.headers.get(name); if (value) headers[name] = value;
