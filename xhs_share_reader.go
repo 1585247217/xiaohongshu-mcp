@@ -105,6 +105,25 @@ func xhsAttachmentURLs(text string) []string {
 	return links
 }
 
+// xhsNoteURLs returns only public Xiaohongshu links embedded in a note or a
+// comment. They are returned as navigation hints, not automatically opened:
+// this keeps a share read bounded and lets the caller decide what to inspect.
+func xhsNoteURLs(text string) []string {
+	seen := make(map[string]bool)
+	var links []string
+	for _, raw := range publicURLPattern.FindAllString(text, -1) {
+		raw = strings.TrimRight(raw, ".,，。;；!?！？)）]】")
+		u, err := url.Parse(raw)
+		if err != nil || !isAllowedXHSURL(u) {
+			continue
+		}
+		if !seen[u.String()] {
+			seen[u.String()] = true
+			links = append(links, u.String())
+		}
+	}
+	return links
+}
 func xhsDetailTarget(u *url.URL) (string, string) {
 	if u == nil { return "", "" }
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
@@ -221,6 +240,7 @@ func readXHSShareLink(ctx context.Context, _ *mcp.CallToolRequest, args ReadXHSS
 		output.WriteString("\\n\\n这是一则视频笔记；只返回公开文字和封面信息。")
 	}
 
+	var relatedNoteLinks []string
 	if comments := xhsCommentsFromState(state); len(comments) > 0 {
 		output.WriteString("\\n\\n首屏评论：")
 		for i, rawComment := range comments {
@@ -233,6 +253,17 @@ func readXHSShareLink(ctx context.Context, _ *mcp.CallToolRequest, args ReadXHSS
 				firstNonEmpty(xhsString(commentUser["nickName"]), xhsString(commentUser["nickname"]), "匿名"),
 				xhsString(comment["content"]),
 			)
+			relatedNoteLinks = append(relatedNoteLinks, xhsNoteURLs(xhsString(comment["content"]))...)
+		}
+	}
+	relatedNoteLinks = append(relatedNoteLinks, xhsNoteURLs(xhsString(note["desc"]))...)
+	if len(relatedNoteLinks) > 0 {
+		seen := make(map[string]bool)
+		output.WriteString("\\n\\n评论/正文中可继续读取的小红书链接：")
+		for _, link := range relatedNoteLinks {
+			if seen[link] { continue }
+			seen[link] = true
+			output.WriteString("\\n- " + link)
 		}
 	}
 
