@@ -1,5 +1,7 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -12,8 +14,38 @@ const port = Number(process.env.PORT || 3000);
 const routeKey = process.env.PRIVATE_ROUTE_KEY;
 const recipient = process.env.ALLOWED_RECIPIENT || "1585247217@qq.com";
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "node_modules/.bin/agently-cli");
-const cliEnv = () => ({ ...process.env, AGENTLY_CLI_CONFIG_DIR: process.env.AGENTLY_CLI_CONFIG_DIR || "/tmp/agently" });
+const configDir = process.env.AGENTLY_CLI_CONFIG_DIR || "/tmp/agently";
+const backupKey = process.env.AGENTLY_AUTH_BACKUP_KEY ? Buffer.from(process.env.AGENTLY_AUTH_BACKUP_KEY, "base64") : null;
+const cliEnv = () => ({ ...process.env, AGENTLY_CLI_CONFIG_DIR: configDir });
 let login = { child: null, url: null, done: false, error: null };
+
+async function collectFiles(dir = configDir, prefix = "") {
+  const out = {};
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const rel = path.posix.join(prefix, entry.name);
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) Object.assign(out, await collectFiles(full, rel));
+    else if (entry.isFile()) out[rel] = (await readFile(full)).toString("base64");
+  }
+  return out;
+}
+function encrypt(value) {
+  if (!backupKey || backupKey.length !== 32) throw new Error("Backup key is unavailable");
+  const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", backupKey, iv);
+  const data = Buffer.concat([cipher.update(value), cipher.final()]);
+  return JSON.stringify({ iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64"), data: data.toString("base64") });
+}
+async function restoreBackup() {
+  if (!process.env.AGENTLY_AUTH_BACKUP || !backupKey || backupKey.length !== 32) return;
+  const packed = JSON.parse(process.env.AGENTLY_AUTH_BACKUP), decipher = createDecipheriv("aes-256-gcm", backupKey, Buffer.from(packed.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(packed.tag, "base64"));
+  const files = JSON.parse(Buffer.concat([decipher.update(Buffer.from(packed.data, "base64")), decipher.final()]).toString());
+  for (const [rel, base64] of Object.entries(files)) {
+    if (rel.includes("..") || path.isAbsolute(rel)) throw new Error("Invalid backup path");
+    const target = path.join(configDir, rel); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, Buffer.from(base64, "base64"));
+  }
+}
+await restoreBackup();
 
 function runCli(args, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
@@ -55,6 +87,7 @@ http.createServer(async (req, res) => {
     return setTimeout(() => { clearInterval(wait); if (!res.headersSent) { res.writeHead(504); res.end("Authorization URL timeout"); } }, 15000);
   }
   if (pathname === `/status/${routeKey}`) { try { const value = await runCli(["auth", "status"]); res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify(value)); } catch (e) { res.writeHead(401); return res.end(JSON.stringify({ ok: false, error: e.message })); } }
+  if (pathname === `/backup/${routeKey}`) { try { const value = encrypt(JSON.stringify(await collectFiles())); res.writeHead(200, { "content-type": "application/json" }); return res.end(value); } catch (e) { res.writeHead(500); return res.end(JSON.stringify({ ok: false, error: e.message })); } }
   if (pathname !== `/mcp/${routeKey}`) { res.writeHead(404); return res.end("not found"); }
   const server = makeServer(); const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => { transport.close(); server.close(); }); await server.connect(transport); await transport.handleRequest(req, res);
