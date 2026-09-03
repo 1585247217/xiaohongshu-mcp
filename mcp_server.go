@@ -560,10 +560,20 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 				ReadOnlyHint: true,
 			},
 		},
-		withPanicRecovery("read_xhs_share_link", readXHSShareLink),
+	withPanicRecovery("read_xhs_share_link", readXHSShareLink),
 	)
 
-	logrus.Infof("Registered %d MCP tools", 19)
+	// 工具 20: 安全读取帖子里发现的公开附件
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "read_public_attachment",
+			Description: "读取小红书帖子中发现的公开附件直链。仅提取文本类文件的内容预览；PDF、Office 文档、压缩包和程序只标注类型与公开地址，绝不执行。",
+			Annotations: &mcp.ToolAnnotations{Title: "Read Public Attachment", ReadOnlyHint: true},
+		},
+		withPanicRecovery("read_public_attachment", readPublicAttachment),
+	)
+
+	logrus.Infof("Registered %d MCP tools", 20)
 }
 
 // convertToMCPResult 将自定义的 MCPToolResult 转换为官方 SDK 的格式
