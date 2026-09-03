@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 )
 
 var initialStatePattern = regexp.MustCompile("(?s)window\\.__INITIAL_STATE__\\s*=\\s*(\\{.*?\\})\\s*</script>")
+var publicURLPattern = regexp.MustCompile(`https?://[^[:space:]<>"']+`)
 
 type ReadXHSShareArgs struct {
 	URL           string `json:"url" jsonschema:"小红书分享链接，仅支持 xhslink 或 xiaohongshu 域名"`
@@ -81,6 +83,21 @@ func xhsImageURL(value string) string {
 		return value
 	}
 	return ""
+}
+
+func xhsAttachmentURLs(text string) []string {
+	seen := make(map[string]bool)
+	var links []string
+	for _, raw := range publicURLPattern.FindAllString(text, -1) {
+		raw = strings.TrimRight(raw, ".,，。;；!?！？)）]】")
+		u, err := publicDocumentURL(raw)
+		if err != nil { continue }
+		ext := strings.ToLower(path.Ext(u.Path))
+		if ext == ".pdf" || ext == ".txt" || ext == ".md" || ext == ".csv" || ext == ".json" || ext == ".doc" || ext == ".docx" || ext == ".xls" || ext == ".xlsx" || ext == ".ppt" || ext == ".pptx" {
+			if !seen[u.String()] { seen[u.String()] = true; links = append(links, u.String()) }
+		}
+	}
+	return links
 }
 
 func xhsNoteFromState(state map[string]any) map[string]any {
@@ -219,6 +236,13 @@ func readXHSShareLink(ctx context.Context, _ *mcp.CallToolRequest, args ReadXHSS
 					output.WriteString("\\n- " + imageURL)
 				}
 			}
+		}
+	}
+
+	if attachments := xhsAttachmentURLs(xhsString(note["desc"])); len(attachments) > 0 {
+		output.WriteString("\\n\\n公开附件：")
+		for _, attachment := range attachments {
+			output.WriteString("\\n- " + attachment)
 		}
 	}
 
