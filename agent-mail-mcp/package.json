@@ -1,0 +1,13 @@
+{
+  "name": "agent-mail-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node src/server.js", "test": "node --test" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@tencent-qqmail/agently-cli": "^1.0.18",
+    "express": "^5.2.1",
+    "zod": "^4.5.4"
+  }
+}
