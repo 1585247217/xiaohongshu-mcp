@@ -128,6 +128,7 @@ type ReplyNotificationArgs struct {
 
 // InitMCPServer 初始化 MCP Server
 func InitMCPServer(appServer *AppServer) *mcp.Server {
+	shareReaderAppServer = appServer
 	// 创建 MCP Server
 	server := mcp.NewServer(
 		&mcp.Implementation{
@@ -554,7 +555,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 	mcp.AddTool(server,
 		&mcp.Tool{
 			Name:        "read_xhs_share_link",
-			Description: "只读解析公开的小红书分享链接，返回标题、正文、作者、互动数据、首屏评论和图片直链；不需要登录，不会发布、评论、点赞或收藏。",
+			Description: "读取小红书分享链接。会先解析短链，再自动调用完整笔记详情接口；返回完整正文、图片、作者、互动数据、评论及识别到的公开附件。无法取得完整详情时才降级为公开页快照。",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Read Xiaohongshu Share Link",
 				ReadOnlyHint: true,
