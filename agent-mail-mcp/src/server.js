@@ -12,7 +12,11 @@ const recipient = process.env.ALLOWED_RECIPIENT || "1585247217@qq.com";
 const cliEnv = () => ({ ...process.env, AGENTLY_CLI_CONFIG_DIR: process.env.AGENTLY_CLI_CONFIG_DIR || "/tmp/agently" });
 let login = { child: null, url: null, done: false, error: null };
 
-const allowed = req => Boolean(apiKey) && (req.headers.authorization?.replace(/^Bearer\s+/i, "") === apiKey || req.query.key === apiKey);
+const allowed = req => Boolean(apiKey) && (
+  req.headers.authorization?.replace(/^Bearer\s+/i, "") === apiKey ||
+  req.query.key === apiKey ||
+  req.params.key === apiKey
+);
 const output = value => ({ content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
 
 function mailServer() {
@@ -42,7 +46,6 @@ app.all("/mcp", async (req, res) => {
 });
 
 app.get("/auth/start/:key", (req, res) => {
-  req.query.key = req.params.key;
   if (!allowed(req)) return res.status(401).send("unauthorized");
   if (login.child && !login.done && login.url) return res.redirect(302, login.url);
   if (login.child && !login.done) return res.status(202).send("授权链接正在生成，请几秒后刷新本页。");
@@ -64,7 +67,6 @@ app.get("/auth/start/:key", (req, res) => {
 });
 
 app.get("/auth/status/:key", async (req, res) => {
-  req.query.key = req.params.key;
   if (!allowed(req)) return res.status(401).send("unauthorized");
   try { res.json(await runCli(["auth", "status"])); } catch (e) { res.status(401).json({ ok: false, error: e.message }); }
 });
