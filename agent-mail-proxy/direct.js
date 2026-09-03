@@ -16,7 +16,15 @@ const recipient = process.env.ALLOWED_RECIPIENT || "1585247217@qq.com";
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "node_modules/.bin/agently-cli");
 const configDir = process.env.AGENTLY_CLI_CONFIG_DIR || "/tmp/agently";
 const backupKey = process.env.AGENTLY_AUTH_BACKUP_KEY ? Buffer.from(process.env.AGENTLY_AUTH_BACKUP_KEY, "base64") : null;
-const cliEnv = () => ({ ...process.env, AGENTLY_CLI_CONFIG_DIR: configDir });
+const cliEnv = () => ({
+  ...process.env,
+  AGENTLY_CLI_CONFIG_DIR: configDir,
+  HOME: configDir,
+  XDG_CONFIG_HOME: path.join(configDir, ".config"),
+  XDG_DATA_HOME: path.join(configDir, ".local", "share"),
+  XDG_STATE_HOME: path.join(configDir, ".local", "state"),
+  XDG_CACHE_HOME: path.join(configDir, ".cache"),
+});
 let login = { child: null, url: null, done: false, error: null };
 
 async function collectFiles(dir = configDir, prefix = "") {
