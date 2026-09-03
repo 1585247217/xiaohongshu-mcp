@@ -41,7 +41,8 @@ app.all("/mcp", async (req, res) => {
   await transport.handleRequest(req, res, req.body);
 });
 
-app.get("/auth/start", (req, res) => {
+app.get("/auth/start/:key", (req, res) => {
+  req.query.key = req.params.key;
   if (!allowed(req)) return res.status(401).send("unauthorized");
   if (login.child && !login.done && login.url) return res.redirect(302, login.url);
   if (login.child && !login.done) return res.status(202).send("授权链接正在生成，请几秒后刷新本页。");
@@ -62,7 +63,8 @@ app.get("/auth/start", (req, res) => {
   setTimeout(() => { clearInterval(poll); if (!res.headersSent) res.status(504).json({ error: "authorization URL timeout" }); }, 15000);
 });
 
-app.get("/auth/status", async (req, res) => {
+app.get("/auth/status/:key", async (req, res) => {
+  req.query.key = req.params.key;
   if (!allowed(req)) return res.status(401).send("unauthorized");
   try { res.json(await runCli(["auth", "status"])); } catch (e) { res.status(401).json({ ok: false, error: e.message }); }
 });
