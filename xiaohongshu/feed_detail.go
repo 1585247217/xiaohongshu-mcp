@@ -1048,11 +1048,20 @@ func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
 	seen := make(map[string]bool)
 	attachments := make([]FeedAttachment, 0, len(candidates))
 	for _, item := range candidates {
-		if item.URL == "" || seen[item.URL] { continue }
+		if item.URL == "" || seen[item.URL] || isPlatformFooterDocument(item) { continue }
 		seen[item.URL] = true
 		attachments = append(attachments, item)
 	}
 	return attachments, nil
+}
+
+// isPlatformFooterDocument excludes the fixed legal qualification links that
+// Xiaohongshu places in every page footer. They are not post attachments.
+func isPlatformFooterDocument(item FeedAttachment) bool {
+	name := strings.TrimSpace(item.Name)
+	return strings.HasPrefix(name, "小红书_医疗器械") ||
+		strings.HasPrefix(name, "小红书_互联网药品") ||
+		strings.HasPrefix(name, "小红书_沪公网安备")
 }
 
 func makeFeedDetailURL(feedID, xsecToken string) string {
