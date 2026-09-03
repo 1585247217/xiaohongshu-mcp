@@ -282,8 +282,6 @@ type UserProfileResponse struct {
 	UserBasicInfo UserBasicInfo      `json:"userBasicInfo"`
 	Interactions  []UserInteractions `json:"interactions"`
 	Feeds         []Feed             `json:"feeds"`
-	Ordering          string `json:"ordering,omitempty"`
-	DuplicatesRemoved int    `json:"duplicatesRemoved,omitempty"`
 }
 
 // UserPageData 用户的详细信息

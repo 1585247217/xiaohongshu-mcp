@@ -93,8 +93,6 @@ type UserProfileResponse struct {
 	UserBasicInfo xiaohongshu.UserBasicInfo      `json:"userBasicInfo"`
 	Interactions  []xiaohongshu.UserInteractions `json:"interactions"`
 	Feeds         []xiaohongshu.Feed             `json:"feeds"`
-	Ordering          string `json:"ordering,omitempty"`
-	DuplicatesRemoved int    `json:"duplicatesRemoved,omitempty"`
 }
 
 // DeleteCookies 删除 cookies 文件，用于登录重置
@@ -477,8 +475,6 @@ func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken,
 		UserBasicInfo: result.UserBasicInfo,
 		Interactions:  result.Interactions,
 		Feeds:         result.Feeds,
-		Ordering:          result.Ordering,
-		DuplicatesRemoved: result.DuplicatesRemoved,
 	}
 
 	return response, nil
