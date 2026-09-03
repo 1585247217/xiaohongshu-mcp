@@ -65,6 +65,7 @@ function runCli(args, timeoutMs = 30000) {
     child.on("close", code => { clearTimeout(timer); if (code) return reject(new Error(stderr || stdout)); try { resolve(JSON.parse(stdout)); } catch { resolve({ ok: true, text: stdout }); } });
   });
 }
+runCli(["auth", "status"]).then(value => console.log(`Agent Mail restored auth: ${JSON.stringify({ logged_in: value?.data?.logged_in, token_status: value?.data?.token_status })}`)).catch(error => console.error(`Agent Mail restored auth check failed: ${error.message}`));
 const output = value => ({ content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
 function makeServer() {
   const server = new McpServer({ name: "Agent Mail", version: "1.0.0" });
