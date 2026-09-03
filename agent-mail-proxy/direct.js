@@ -89,7 +89,12 @@ http.createServer(async (req, res) => {
       login = { child: null, url: null, done: false, error: null };
       const child = spawn(cliPath, ["auth", "login"], { env: cliEnv(), stdio: ["ignore", "pipe", "pipe"] }); login.child = child;
       const inspect = c => { const m = String(c).match(/https?:\/\/[^\s]+/); if (m && !login.url) login.url = m[0]; };
-      child.stdout.on("data", inspect); child.stderr.on("data", inspect); child.on("close", code => { login.done = true; if (code) login.error = `login exited ${code}`; });
+      child.stdout.on("data", inspect); child.stderr.on("data", inspect); child.on("close", async code => {
+        login.done = true;
+        if (code) { login.error = `login exited ${code}`; return; }
+        try { console.log(`AGENTLY_AUTH_BACKUP:${encrypt(JSON.stringify(await collectFiles()))}`); }
+        catch (error) { console.error(`Agent Mail backup failed: ${error.message}`); }
+      });
     }
     const wait = setInterval(() => { if (login.url || login.done) { clearInterval(wait); if (login.url) { res.writeHead(302, { location: login.url }); res.end(); } else { res.writeHead(500); res.end(login.error || "No authorization URL"); } } }, 100);
     return setTimeout(() => { clearInterval(wait); if (!res.headersSent) { res.writeHead(504); res.end("Authorization URL timeout"); } }, 15000);
