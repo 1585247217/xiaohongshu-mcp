@@ -1009,20 +1009,34 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 }
 
 func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
-	raw := page.MustEval(`() => {
+	raw := page.MustEval(`async () => {
 		const keys = ['href', 'data-url', 'data-download-url', 'data-file-url', 'data-src'];
 		const out = [];
+		const add = (name, url, source) => {
+			if (!url) return;
+			try { url = new URL(url, location.href).href; } catch (_) { return; }
+			const hint = (name + ' ' + url).toLowerCase();
+			if (/(docx?|pdf|xlsx?|pptx?|附件|文件|download|attachment)/.test(hint)) out.push({name, url, source});
+		};
 		for (const el of document.querySelectorAll('a, [data-url], [data-download-url], [data-file-url], [data-src]')) {
 			const name = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
 			for (const key of keys) {
 				const value = el.getAttribute(key);
-				if (!value) continue;
-				let url;
-				try { url = new URL(value, location.href).href; } catch (_) { continue; }
-				const hint = (name + ' ' + url).toLowerCase();
-				if (/(docx?|pdf|xlsx?|pptx?|附件|文件|download|attachment)/.test(hint)) out.push({name, url, source: key});
+				add(name, value, key);
 			}
 		}
+		// Some attachment cards have no href until their button is pressed. Click
+		// only non-link controls with an attachment-like label, then inspect the
+		// browser resource list. This avoids following ordinary post links.
+		for (const el of [...document.querySelectorAll('button, [role=button]')].slice(0, 80)) {
+			const name = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
+			if (/(docx?|pdf|xlsx?|pptx?|附件|文件|下载|download|attachment)/i.test(name)) {
+				try { el.click(); } catch (_) {}
+			}
+		}
+		await new Promise(resolve => setTimeout(resolve, 800));
+		for (const item of performance.getEntriesByType('resource')) add('', item.name, 'network');
+		for (const url of document.documentElement.innerHTML.match(/https?:\\/\\/[^\\s"'<>]+/g) || []) add('', url, 'html');
 		return JSON.stringify(out);
 	}`).String()
 	var candidates []FeedAttachment
