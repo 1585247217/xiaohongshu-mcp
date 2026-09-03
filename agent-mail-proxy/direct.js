@@ -6,6 +6,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
+console.log("Agent Mail MCP booting");
+
 const port = Number(process.env.PORT || 3000);
 const routeKey = process.env.PRIVATE_ROUTE_KEY;
 const recipient = process.env.ALLOWED_RECIPIENT || "1585247217@qq.com";
@@ -57,4 +59,4 @@ http.createServer(async (req, res) => {
   const chunks=[]; for await (const chunk of req) chunks.push(chunk);
   const server = makeServer(); const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => { transport.close(); server.close(); }); await server.connect(transport); await transport.handleRequest(req, res, Buffer.concat(chunks));
-}).listen(port, "0.0.0.0");
+}).listen(port, "0.0.0.0", () => console.log(`Agent Mail MCP listening on ${port}`));
