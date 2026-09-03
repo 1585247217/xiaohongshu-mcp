@@ -2,6 +2,7 @@ package xiaohongshu
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"time"
 
@@ -90,7 +91,7 @@ func (a *LoginAction) Login(ctx context.Context) error {
 func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error) {
 	// Keep this bounded: Xiaohongshu occasionally changes or rejects the login
 	// page, and an unbounded MustElement call would make the MCP request time out.
-	pp := a.page.Context(ctx).Timeout(25 * time.Second)
+	pp := a.page.Context(ctx).Timeout(45 * time.Second)
 
 	// 导航到小红书首页，这会触发二维码弹窗
 	if err := pp.Navigate("https://www.xiaohongshu.com/explore"); err != nil {
@@ -153,7 +154,13 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 		if body, bodyErr := pp.Eval(`() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 500)`); bodyErr == nil {
 			bodyText = body.Value.String()
 		}
-		return "", false, errors.Wrapf(err, "qrcode element not found (url=%s, page=%q)", pageURL, bodyText)
+		// Preserve what the server actually saw. The caller labels this as a
+		// diagnostic page screenshot, never as a scannable QR code.
+		screenshot := ""
+		if png, shotErr := pp.Screenshot(false, nil); shotErr == nil && len(png) > 0 {
+			screenshot = "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+		}
+		return screenshot, false, errors.Wrapf(err, "qrcode element not found (url=%s, page=%q)", pageURL, bodyText)
 	}
 	src, err := el.Attribute("src")
 	if err != nil {
