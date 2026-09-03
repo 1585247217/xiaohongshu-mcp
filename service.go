@@ -113,7 +113,7 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 
 	isLoggedIn, err := loginAction.CheckLoginStatus(ctx)
 	if err != nil {
-		return nil, err
+		return &LoginQrcodeResponse{Img: img}, err
 	}
 
 	response := &LoginStatusResponse{
