@@ -110,7 +110,9 @@ func readPublicAttachment(ctx context.Context, _ *mcp.CallToolRequest, args Read
 
 	contentType := resp.Header.Get("Content-Type")
 	kind := attachmentKind(resp.Request.URL, contentType)
-	if strings.EqualFold(path.Ext(resp.Request.URL.Path), ".docx") {
+	isDOCX := strings.EqualFold(path.Ext(resp.Request.URL.Path), ".docx") ||
+		strings.Contains(strings.ToLower(contentType), "wordprocessingml")
+	if isDOCX {
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 		if err != nil { return nil, nil, err }
 		preview, err := docxPreview(body)
