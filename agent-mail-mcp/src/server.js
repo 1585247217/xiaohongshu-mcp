@@ -9,6 +9,7 @@ const app = express();
 app.use(express.json({ limit: "2mb" }));
 const apiKey = process.env.MCP_API_KEY;
 const recipient = process.env.ALLOWED_RECIPIENT || "1585247217@qq.com";
+const oauthPathKey = "qiu-agent-mail-20260903";
 const cliEnv = () => ({ ...process.env, AGENTLY_CLI_CONFIG_DIR: process.env.AGENTLY_CLI_CONFIG_DIR || "/tmp/agently" });
 let login = { child: null, url: null, done: false, error: null };
 
@@ -46,7 +47,7 @@ app.all("/mcp", async (req, res) => {
 });
 
 app.get("/auth/start/:key", (req, res) => {
-  if (!allowed(req)) return res.status(401).send("unauthorized");
+  if (req.params.key !== oauthPathKey) return res.status(401).send("unauthorized");
   if (login.child && !login.done && login.url) return res.redirect(302, login.url);
   if (login.child && !login.done) return res.status(202).send("授权链接正在生成，请几秒后刷新本页。");
   login = { child: null, url: null, done: false, error: null };
@@ -67,7 +68,7 @@ app.get("/auth/start/:key", (req, res) => {
 });
 
 app.get("/auth/status/:key", async (req, res) => {
-  if (!allowed(req)) return res.status(401).send("unauthorized");
+  if (req.params.key !== oauthPathKey) return res.status(401).send("unauthorized");
   try { res.json(await runCli(["auth", "status"])); } catch (e) { res.status(401).json({ ok: false, error: e.message }); }
 });
 
