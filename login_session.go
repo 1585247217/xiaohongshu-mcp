@@ -1,6 +1,9 @@
 package main
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 // loginSessions 管理「已发出二维码、还在等扫码」的登录会话。
 //
@@ -11,6 +14,39 @@ type loginSessions struct {
 	mu     sync.Mutex
 	seq    uint64
 	cancel func()
+	qrImage string
+	qrUntil time.Time
+	blockedUntil time.Time
+}
+
+func (l *loginSessions) cachedQR(now time.Time) (string, time.Duration, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.qrImage == "" || !now.Before(l.qrUntil) {
+		return "", 0, false
+	}
+	return l.qrImage, time.Until(l.qrUntil), true
+}
+
+func (l *loginSessions) cacheQR(image string, ttl time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.qrImage, l.qrUntil = image, time.Now().Add(ttl)
+}
+
+func (l *loginSessions) blockFor(d time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.blockedUntil = time.Now().Add(d)
+}
+
+func (l *loginSessions) cooldown(now time.Time) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if now.Before(l.blockedUntil) {
+		return time.Until(l.blockedUntil)
+	}
+	return 0
 }
 
 // start 结束上一个待扫码会话（如果有），登记新的，返回本次会话的序号。
@@ -38,5 +74,7 @@ func (l *loginSessions) finish(seq uint64) {
 
 	if l.seq == seq {
 		l.cancel = nil
+		l.qrImage = ""
+		l.qrUntil = time.Time{}
 	}
 }
