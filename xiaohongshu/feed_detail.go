@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1001,6 +1002,13 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 	} else {
 		noteDetail.Note.Attachments = attachments
 	}
+	if len(noteDetail.Note.Attachments) == 0 {
+		if attachment, err := captureAttachmentDownload(page); err != nil {
+			logrus.Debugf("捕捉附件下载失败: %v", err)
+		} else if attachment != nil {
+			noteDetail.Note.Attachments = append(noteDetail.Note.Attachments, *attachment)
+		}
+	}
 
 	return &FeedDetailResponse{
 		Note:     noteDetail.Note,
@@ -1027,8 +1035,8 @@ func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
 			}
 		}
 		// Some attachment cards have no href until their button is pressed. Click
-		// only non-link controls with an attachment-like label, then inspect only
-		// resources created after those clicks.
+		// only non-link controls with an attachment-like label, then inspect the
+		// browser resource list. This avoids following ordinary post links.
 		const existingResources = new Set(performance.getEntriesByType('resource').map(item => item.name));
 		for (const el of [...document.querySelectorAll('button, [role=button]')].slice(0, 80)) {
 			const name = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
@@ -1055,13 +1063,55 @@ func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
 	return attachments, nil
 }
 
-// isPlatformFooterDocument excludes the fixed legal qualification links that
-// Xiaohongshu places in every page footer. They are not post attachments.
 func isPlatformFooterDocument(item FeedAttachment) bool {
 	name := strings.TrimSpace(item.Name)
 	return strings.HasPrefix(name, "小红书_医疗器械") ||
 		strings.HasPrefix(name, "小红书_互联网药品") ||
 		strings.HasPrefix(name, "小红书_沪公网安备")
+}
+
+// captureAttachmentDownload handles cards whose real URL appears only after
+// a click. The listener is registered before clicking.
+func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
+	name := page.MustEval(`() => {
+		const blocked = /(医疗器械网络交易服务|互联网药品信息服务|沪公网安备)/;
+		const hint = /(docx?|pdf|xlsx?|pptx?|附件|文件|下载)/i;
+		for (const el of document.querySelectorAll('body *')) {
+			const text = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
+			if (!text || text.length > 160 || blocked.test(text) || !hint.test(text)) continue;
+			const control = el.closest('a, button, [role=button]') || el;
+			control.setAttribute('data-xhs-attachment-candidate', '1');
+			return text;
+		}
+		return '';
+	}`).String()
+	if name == "" {
+		return nil, nil
+	}
+
+	dir, err := os.MkdirTemp("", "xhs-attachment-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+
+	waitCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	waitDownload := page.Browser().Context(waitCtx).WaitDownload(dir)
+	clicked := page.MustEval(`() => {
+		const el = document.querySelector('[data-xhs-attachment-candidate="1"]');
+		if (!el) return false;
+		el.click();
+		return true;
+	}`).Bool()
+	if !clicked {
+		return nil, nil
+	}
+	info := waitDownload()
+	if info == nil || info.URL == "" {
+		return nil, nil
+	}
+	return &FeedAttachment{Name: name, URL: info.URL, Source: "browser-download"}, nil
 }
 
 func makeFeedDetailURL(feedID, xsecToken string) string {
