@@ -1075,15 +1075,29 @@ func isPlatformFooterDocument(item FeedAttachment) bool {
 func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	name := page.MustEval(`() => {
 		const blocked = /(医疗器械网络交易服务|互联网药品信息服务|沪公网安备)/;
-		const hint = /(docx?|pdf|xlsx?|pptx?|附件|文件|下载)/i;
+		const strongHint = /\.(docx?|pdf|xlsx?|pptx?)(?:\b|$)/i;
+		const weakHint = /(附件|下载)/i;
+		const candidates = [];
 		for (const el of document.querySelectorAll('body *')) {
 			const text = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
-			if (!text || text.length > 160 || blocked.test(text) || !hint.test(text)) continue;
-			const control = el.closest('a, button, [role=button]') || el;
-			control.setAttribute('data-xhs-attachment-candidate', '1');
-			return text;
+			if (!text || text.length > 200 || blocked.test(text)) continue;
+			const attrs = [el.getAttribute('href'), el.getAttribute('data-url'), el.getAttribute('data-download-url'), el.getAttribute('data-file-url'), el.className].filter(v => typeof v === 'string').join(' ');
+			const explicit = strongHint.test(text + ' ' + attrs);
+			const cardLike = weakHint.test(text) && !!el.querySelector('img, svg, [class*=icon], [class*=file], [class*=attach]');
+			if (!explicit && !cardLike) continue;
+			const control = el.closest('a, button, [role=button], [class*=file], [class*=attach]') || el;
+			let score = explicit ? 100 : 20;
+			if (control.matches('a, button, [role=button]')) score += 50;
+			if (/(file|attach|download|document)/i.test(String(control.className))) score += 40;
+			if (control.querySelector('img, svg, [class*=icon]')) score += 20;
+			// Prefer the compact file card over a paragraph or a large note wrapper.
+			score -= Math.min(40, control.querySelectorAll('*').length);
+			candidates.push({control, text, score});
 		}
-		return '';
+		candidates.sort((a, b) => b.score - a.score);
+		if (!candidates.length) return '';
+		candidates[0].control.setAttribute('data-xhs-attachment-candidate', '1');
+		return candidates[0].text;
 	}`).String()
 	if name == "" {
 		return nil, nil
