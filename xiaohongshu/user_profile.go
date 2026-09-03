@@ -133,8 +133,36 @@ func (u *UserProfileAction) extractUserProfileData(page *rod.Page, tab ProfileTa
 	if notesData.Index >= 0 && notesData.Index < len(notesData.Notes) {
 		response.Feeds = append(response.Feeds, notesData.Notes[notesData.Index]...)
 	}
+	// The site can repeat a card while a tab is being hydrated. Preserve the
+	// visible order but never present the same note twice to callers. This is
+	// deliberately *not* described as an action-time ordering: profile tabs do
+	// not expose when somebody liked or saved an item.
+	response.Feeds, response.DuplicatesRemoved = uniqueProfileFeeds(response.Feeds)
+	response.Ordering = "页面展示顺序；不代表点赞或收藏的操作时间"
 
 	return response, nil
+}
+
+func uniqueProfileFeeds(feeds []Feed) ([]Feed, int) {
+	seen := make(map[string]struct{}, len(feeds))
+	unique := make([]Feed, 0, len(feeds))
+	duplicates := 0
+	for _, feed := range feeds {
+		key := strings.TrimSpace(feed.ID)
+		// A malformed card has no stable ID. Keep it rather than accidentally
+		// merging distinct cards; normal note cards always have an ID.
+		if key == "" {
+			unique = append(unique, feed)
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			duplicates++
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, feed)
+	}
+	return unique, duplicates
 }
 
 func makeUserProfileURL(userID, xsecToken string, tab ProfileTab) string {
