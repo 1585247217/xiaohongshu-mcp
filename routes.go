@@ -40,6 +40,11 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
 		},
 		&mcp.StreamableHTTPOptions{
 			JSONResponse: true, // 支持 JSON 响应
+			// Render terminates public HTTPS at its proxy and forwards requests to
+			// this process through localhost. The SDK's DNS-rebinding check sees
+			// that localhost hop with the public Host header and rejects it with
+			// 403 unless explicitly disabled for this proxy deployment.
+			DisableLocalhostProtection: true,
 			// 换取客户端可跳过 initialize 握手直接调工具。代价是服务端无法反向
 			// 请求客户端（sampling / elicitation / roots），眼下一处都没用到；
 			// 要用得先摘掉这行。
