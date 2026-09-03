@@ -9,6 +9,7 @@ require (
 	github.com/h2non/filetype v1.1.3
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/pkg/errors v0.9.1
+	rsc.io/pdf v0.1.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
 	github.com/ulikunitz/xz v0.5.15
