@@ -9,11 +9,13 @@ if (!upstream || !upstreamKey || !routeKey) throw new Error("Missing proxy confi
 
 http.createServer(async (req, res) => {
   const expected = `/mcp/${routeKey}`;
+  const pathname = new URL(req.url, "http://localhost").pathname.replace(/\/$/, "");
   if (req.url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end('{"ok":true}');
   }
-  if (req.url !== expected) {
+  if (pathname !== expected) {
+    console.log(JSON.stringify({ method: req.method, pathname, status: 404 }));
     res.writeHead(404, { "content-type": "text/plain" });
     return res.end("not found");
   }
@@ -36,7 +38,9 @@ http.createServer(async (req, res) => {
     }
     res.writeHead(response.status, headers);
     res.end(Buffer.from(await response.arrayBuffer()));
+    console.log(JSON.stringify({ method: req.method, pathname, upstreamStatus: response.status }));
   } catch (error) {
+    console.error(JSON.stringify({ method: req.method, pathname, error: error.message }));
     res.writeHead(502, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "upstream unavailable" }));
   }
