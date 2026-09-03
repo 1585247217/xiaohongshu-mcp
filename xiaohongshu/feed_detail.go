@@ -1036,7 +1036,7 @@ func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
 		}
 		await new Promise(resolve => setTimeout(resolve, 800));
 		for (const item of performance.getEntriesByType('resource')) add('', item.name, 'network');
-		for (const url of document.documentElement.innerHTML.match(/https?:\\/\\/[^\\s"'<>]+/g) || []) add('', url, 'html');
+		for (const url of document.documentElement.innerHTML.match(/https?:\/\/[^\s"'<>]+/g) || []) add('', url, 'html');
 		return JSON.stringify(out);
 	}`).String()
 	var candidates []FeedAttachment
