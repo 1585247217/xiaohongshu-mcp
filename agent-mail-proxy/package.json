@@ -3,5 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node server.js" }
+  "scripts": {
+    "start": "node direct.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@tencent-qqmail/agently-cli": "^1.0.18",
+    "zod": "^4.5.4"
+  }
 }
