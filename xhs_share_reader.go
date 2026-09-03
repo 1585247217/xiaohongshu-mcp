@@ -66,6 +66,23 @@ func xhsString(value any) string {
 	return fmt.Sprint(value)
 }
 
+// xhsImageURL normalizes the CDN URLs emitted by public note pages. Some
+// pages still provide an http URL even though the same CDN asset is available
+// over HTTPS; remote MCP clients should only receive the secure form.
+func xhsImageURL(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "//") {
+		return "https:" + value
+	}
+	if strings.HasPrefix(value, "http://") {
+		return "https://" + strings.TrimPrefix(value, "http://")
+	}
+	if strings.HasPrefix(value, "https://") {
+		return value
+	}
+	return ""
+}
+
 func xhsNoteFromState(state map[string]any) map[string]any {
 	if note := xhsMap(xhsNested(state, "noteData", "data", "noteData")); note != nil {
 		return note
@@ -197,10 +214,8 @@ func readXHSShareLink(ctx context.Context, _ *mcp.CallToolRequest, args ReadXHSS
 				}
 				image := xhsMap(rawImage)
 				imageURL := firstNonEmpty(xhsString(image["url"]), xhsString(image["urlDefault"]))
-				if strings.HasPrefix(imageURL, "//") {
-					imageURL = "https:" + imageURL
-				}
-				if strings.HasPrefix(imageURL, "https://") {
+				imageURL = xhsImageURL(imageURL)
+				if imageURL != "" {
 					output.WriteString("\\n- " + imageURL)
 				}
 			}
