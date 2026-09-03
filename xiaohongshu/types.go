@@ -125,7 +125,16 @@ type FeedDetail struct {
 	User         User              `json:"user"`
 	InteractInfo InteractInfo      `json:"interactInfo"`
 	ImageList    []DetailImageInfo `json:"imageList"`
+	Attachments  []FeedAttachment  `json:"attachments,omitempty"`
 	Video        *VideoDetail      `json:"video,omitempty"` // 视频笔记才有，图文笔记为 nil
+}
+
+// FeedAttachment is discovered from attachment cards rendered on the note
+// page. The site does not consistently expose these through __INITIAL_STATE__.
+type FeedAttachment struct {
+	Name   string `json:"name,omitempty"`
+	URL    string `json:"url"`
+	Source string `json:"source,omitempty"`
 }
 
 // VideoDetail 详情页的视频信息，按页面 note.video 原样映射，不替调用方挑档位。
