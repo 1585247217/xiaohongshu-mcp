@@ -13,7 +13,7 @@ COPY go.mod go.sum ./
 COPY . .
 # VERSION 由 CI 通过 --build-arg 传入，本地构建默认 dev
 ARG VERSION=dev
-RUN go mod download && \
+RUN go mod tidy && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=${VERSION}" -o /out/app .
 
 # ---- run stage ----
