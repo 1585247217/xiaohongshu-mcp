@@ -993,11 +993,48 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 	if !exists {
 		return nil, fmt.Errorf("feed %s not found in noteDetailMap", feedID)
 	}
+	// Some posts expose documents only as interactive attachment cards. They
+	// are absent from noteDetailMap, so inspect rendered anchors and download
+	// attributes as a second source.
+	if attachments, err := extractRenderedAttachments(page); err != nil {
+		logrus.Debugf("提取页面附件失败: %v", err)
+	} else {
+		noteDetail.Note.Attachments = attachments
+	}
 
 	return &FeedDetailResponse{
 		Note:     noteDetail.Note,
 		Comments: noteDetail.Comments,
 	}, nil
+}
+
+func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
+	raw := page.MustEval(`() => {
+		const keys = ['href', 'data-url', 'data-download-url', 'data-file-url', 'data-src'];
+		const out = [];
+		for (const el of document.querySelectorAll('a, [data-url], [data-download-url], [data-file-url], [data-src]')) {
+			const name = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
+			for (const key of keys) {
+				const value = el.getAttribute(key);
+				if (!value) continue;
+				let url;
+				try { url = new URL(value, location.href).href; } catch (_) { continue; }
+				const hint = (name + ' ' + url).toLowerCase();
+				if (/(docx?|pdf|xlsx?|pptx?|附件|文件|download|attachment)/.test(hint)) out.push({name, url, source: key});
+			}
+		}
+		return JSON.stringify(out);
+	}`).String()
+	var candidates []FeedAttachment
+	if err := json.Unmarshal([]byte(raw), &candidates); err != nil { return nil, err }
+	seen := make(map[string]bool)
+	attachments := make([]FeedAttachment, 0, len(candidates))
+	for _, item := range candidates {
+		if item.URL == "" || seen[item.URL] { continue }
+		seen[item.URL] = true
+		attachments = append(attachments, item)
+	}
+	return attachments, nil
 }
 
 func makeFeedDetailURL(feedID, xsecToken string) string {
