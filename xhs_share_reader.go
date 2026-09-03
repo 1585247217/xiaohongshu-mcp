@@ -294,6 +294,29 @@ func readXHSShareLink(ctx context.Context, _ *mcp.CallToolRequest, args ReadXHSS
 			"feed_id": feedID, "xsec_token": xsecToken, "load_all_comments": false,
 		})
 		if !detail.IsError {
+			// The complete reader can discover attachment cards that do not exist
+			// in the public HTML. Read their text here so a shared link is one
+			// complete operation rather than a two-tool workflow.
+			var payload struct {
+				Data struct {
+					Note struct {
+						Attachments []struct { URL string `json:"url"` } `json:"attachments"`
+					} `json:"note"`
+				} `json:"data"`
+			}
+			if len(detail.Content) > 0 {
+				_ = json.Unmarshal([]byte(detail.Content[0].Text), &payload)
+				for _, attachment := range payload.Data.Note.Attachments {
+					if attachment.URL == "" { continue }
+					preview, _, previewErr := readPublicAttachment(ctx, nil, ReadPublicAttachmentArgs{URL: attachment.URL})
+					if previewErr != nil || preview == nil || preview.IsError { continue }
+					for _, content := range preview.Content {
+						if text, ok := content.(*mcp.TextContent); ok {
+							output.WriteString("\\n\\n--- 附件内容 ---\\n" + text.Text)
+						}
+					}
+				}
+			}
 			result := convertToMCPResult(detail)
 			if len(result.Content) > 0 {
 				if text, ok := result.Content[0].(*mcp.TextContent); ok {
