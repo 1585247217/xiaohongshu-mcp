@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-rod/rod"
@@ -135,6 +136,14 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 
 // GetLoginQrcode 获取登录的扫码二维码
 func (s *XiaohongshuService) GetLoginQrcode(ctx context.Context) (*LoginQrcodeResponse, error) {
+	now := time.Now()
+	if image, remaining, ok := s.logins.cachedQR(now); ok {
+		return &LoginQrcodeResponse{Timeout: remaining.Round(time.Second).String(), Img: image}, nil
+	}
+	if remaining := s.logins.cooldown(now); remaining > 0 {
+		return nil, fmt.Errorf("小红书登录页触发验证码，已暂停重复请求，约 %s 后可重试", remaining.Round(time.Minute))
+	}
+
 	b := newBrowser()
 	page := b.NewPage()
 
@@ -150,12 +159,16 @@ func (s *XiaohongshuService) GetLoginQrcode(ctx context.Context) (*LoginQrcodeRe
 		defer deferFunc()
 	}
 	if err != nil {
-		return nil, err
+		if strings.Contains(err.Error(), "/website-login/captcha") {
+			s.logins.blockFor(30 * time.Minute)
+		}
+		return &LoginQrcodeResponse{Img: img}, err
 	}
 
 	timeout := 4 * time.Minute
 
 	if !loggedIn {
+		s.logins.cacheQR(img, timeout)
 		s.waitScanInBackground(loginAction, page, deferFunc, timeout)
 	}
 
