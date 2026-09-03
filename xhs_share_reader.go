@@ -23,6 +23,11 @@ type ReadXHSShareArgs struct {
 	IncludeImages *bool  `json:"include_images,omitempty" jsonschema:"是否返回图片直链，默认 true；关闭后只返回文字"`
 }
 
+// shareReaderAppServer is set while the MCP server is built.  A share URL is
+// only a discovery mechanism: once it resolves to a note id/token we use the
+// authenticated detail reader, which is the authoritative result.
+var shareReaderAppServer *AppServer
+
 func isAllowedXHSURL(u *url.URL) bool {
 	if u == nil || u.Scheme != "https" {
 		return false
@@ -100,6 +105,15 @@ func xhsAttachmentURLs(text string) []string {
 	return links
 }
 
+func xhsDetailTarget(u *url.URL) (string, string) {
+	if u == nil { return "", "" }
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) == 0 { return "", "" }
+	feedID := parts[len(parts)-1]
+	if feedID == "" { return "", "" }
+	return feedID, u.Query().Get("xsec_token")
+}
+
 func xhsNoteFromState(state map[string]any) map[string]any {
 	if note := xhsMap(xhsNested(state, "noteData", "data", "noteData")); note != nil {
 		return note
@@ -155,6 +169,10 @@ func readXHSShareLink(ctx context.Context, _ *mcp.CallToolRequest, args ReadXHSS
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("读取分享链接失败：HTTP %d", response.StatusCode)}},
 		}, nil, nil
 	}
+	// A resolved share URL normally contains the credentials required by the
+	// authenticated reader. Prefer that complete detail result over this public
+	// page snapshot, so callers never need to manually make a second tool call.
+	feedID, xsecToken := xhsDetailTarget(response.Request.URL)
 
 	html, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
 	if err != nil {
@@ -243,6 +261,46 @@ func readXHSShareLink(ctx context.Context, _ *mcp.CallToolRequest, args ReadXHSS
 		output.WriteString("\\n\\n公开附件：")
 		for _, attachment := range attachments {
 			output.WriteString("\\n- " + attachment)
+		}
+	}
+
+	// Attachment cards are not always mirrored into desc. Scan the full public
+	// state too; this catches document URLs carried by note metadata.
+	if rawState, marshalErr := json.Marshal(state); marshalErr == nil {
+		seen := make(map[string]bool)
+		for _, attachment := range xhsAttachmentURLs(string(rawState)) { seen[attachment] = true }
+		for _, attachment := range xhsAttachmentURLs(xhsString(note["desc"])) { seen[attachment] = true }
+		if len(seen) > 0 {
+			output.WriteString("\\n\\n识别到的附件：")
+			for attachment := range seen {
+				output.WriteString("\\n- " + attachment)
+				ext := strings.ToLower(path.Ext(strings.Split(attachment, "?")[0]))
+				if ext == ".docx" || ext == ".pdf" {
+					preview, _, previewErr := readPublicAttachment(ctx, nil, ReadPublicAttachmentArgs{URL: attachment})
+					if previewErr == nil && preview != nil && !preview.IsError {
+						for _, content := range preview.Content {
+							if text, ok := content.(*mcp.TextContent); ok {
+								output.WriteString("\\n  " + strings.ReplaceAll(text.Text, "\\n", "\\n  "))
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if shareReaderAppServer != nil && feedID != "" && xsecToken != "" {
+		detail := shareReaderAppServer.handleGetFeedDetail(ctx, map[string]any{
+			"feed_id": feedID, "xsec_token": xsecToken, "load_all_comments": false,
+		})
+		if !detail.IsError {
+			result := convertToMCPResult(detail)
+			if len(result.Content) > 0 {
+				if text, ok := result.Content[0].(*mcp.TextContent); ok {
+					text.Text += "\\n\\n--- 分享页补充（公开附件识别）---\\n" + output.String()
+				}
+			}
+			return result, nil, nil
 		}
 	}
 
