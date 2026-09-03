@@ -102,7 +102,7 @@ func (s *OAuthServer) authorizationServerMetadata(c *gin.Context) {
 		"authorization_endpoint": base + "/oauth/authorize",
 		"token_endpoint": base + "/oauth/token",
 		"response_types_supported": []string{"code"},
-		"grant_types_supported": []string{"authorization_code"},
+		"grant_types_supported": []string{"authorization_code", "refresh_token"},
 		"token_endpoint_auth_methods_supported": []string{"none"},
 		"code_challenge_methods_supported": []string{"S256"},
 	})
@@ -173,7 +173,17 @@ func (s *OAuthServer) token(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	if c.PostForm("grant_type") != "authorization_code" {
+	grantType := c.PostForm("grant_type")
+	if grantType == "refresh_token" {
+		refresh, ok := s.verify(c.PostForm("refresh_token"), "refresh")
+		if !ok || (c.PostForm("client_id") != "" && refresh.ClientID != c.PostForm("client_id")) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_grant"})
+			return
+		}
+		s.issueTokens(c, refresh.ClientID, refresh.Scope)
+		return
+	}
+	if grantType != "authorization_code" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported_grant_type"})
 		return
 	}
@@ -187,12 +197,27 @@ func (s *OAuthServer) token(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_grant"})
 		return
 	}
-	accessToken, err := s.sign(oauthPayload{ClientID: code.ClientID, Scope: code.Scope, ExpiresAt: time.Now().Add(time.Hour).Unix(), Kind: "access"})
+	s.issueTokens(c, code.ClientID, code.Scope)
+}
+
+func (s *OAuthServer) issueTokens(c *gin.Context, clientID, scope string) {
+	accessToken, err := s.sign(oauthPayload{ClientID: clientID, Scope: scope, ExpiresAt: time.Now().Add(time.Hour).Unix(), Kind: "access"})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"access_token": accessToken, "token_type": "Bearer", "expires_in": 3600, "scope": code.Scope})
+	// A refresh token is rotated on every use and renewed for 180 days.
+	// Regular use therefore keeps the connector signed in indefinitely, while
+	// rotating OAUTH_SIGNING_SECRET immediately revokes all issued tokens.
+	refreshToken, err := s.sign(oauthPayload{ClientID: clientID, Scope: scope, ExpiresAt: time.Now().Add(180 * 24 * time.Hour).Unix(), Kind: "refresh"})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"access_token": accessToken, "token_type": "Bearer", "expires_in": 3600,
+		"refresh_token": refreshToken, "scope": scope,
+	})
 }
 
 func (s *OAuthServer) validAccessToken(token string) bool {
