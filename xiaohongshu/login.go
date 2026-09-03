@@ -106,10 +106,33 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 		return "", true, nil
 	}
 
-	// The wrapper class has changed between web releases; the QR image class is
-	// the stable part. Avoid coupling the lookup to the old wrapper hierarchy.
-	el, err := pp.Element(".qrcode-img")
-	if err != nil {
+	// Some variants no longer open the login modal automatically. Trigger the
+	// visible login entry before looking for the QR image.
+	_, _ = pp.Eval(`() => {
+		const nodes = [...document.querySelectorAll('button, a, [role=button], div')];
+		const login = nodes.find(el => (el.textContent || '').trim() === '登录' && el.getBoundingClientRect().width > 0);
+		if (login) { login.click(); return true; }
+		return false;
+	}`)
+	time.Sleep(2 * time.Second)
+
+	// Xiaohongshu has used multiple wrappers and attributes for this image.
+	selectors := []string{
+		".qrcode-img",
+		"[class*=qrcode] img",
+		"[class*=qr-code] img",
+		"img[alt*=二维码]",
+		"img[src^='data:image']",
+	}
+	var el *rod.Element
+	var err error
+	for _, selector := range selectors {
+		el, err = pp.Timeout(4 * time.Second).Element(selector)
+		if err == nil && el != nil {
+			break
+		}
+	}
+	if el == nil {
 		return "", false, errors.Wrap(err, "qrcode element not found")
 	}
 	src, err := el.Attribute("src")
