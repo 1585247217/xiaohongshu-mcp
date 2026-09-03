@@ -88,10 +88,17 @@ func (a *LoginAction) Login(ctx context.Context) error {
 }
 
 func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error) {
-	pp := a.page.Context(ctx)
+	// Keep this bounded: Xiaohongshu occasionally changes or rejects the login
+	// page, and an unbounded MustElement call would make the MCP request time out.
+	pp := a.page.Context(ctx).Timeout(25 * time.Second)
 
 	// 导航到小红书首页，这会触发二维码弹窗
-	pp.MustNavigate("https://www.xiaohongshu.com/explore").MustWaitLoad()
+	if err := pp.Navigate("https://www.xiaohongshu.com/explore"); err != nil {
+		return "", false, errors.Wrap(err, "navigate to xiaohongshu login page failed")
+	}
+	if err := pp.WaitLoad(); err != nil {
+		return "", false, errors.Wrap(err, "wait for xiaohongshu login page failed")
+	}
 
 	time.Sleep(2 * time.Second)
 
@@ -99,7 +106,13 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 		return "", true, nil
 	}
 
-	src, err := pp.MustElement(".login-container .qrcode-img").Attribute("src")
+	// The wrapper class has changed between web releases; the QR image class is
+	// the stable part. Avoid coupling the lookup to the old wrapper hierarchy.
+	el, err := pp.Element(".qrcode-img")
+	if err != nil {
+		return "", false, errors.Wrap(err, "qrcode element not found")
+	}
+	src, err := el.Attribute("src")
 	if err != nil {
 		return "", false, errors.Wrap(err, "get qrcode src failed")
 	}
