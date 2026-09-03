@@ -56,7 +56,6 @@ http.createServer(async (req, res) => {
   }
   if (pathname === `/status/${routeKey}`) { try { const value = await runCli(["auth", "status"]); res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify(value)); } catch (e) { res.writeHead(401); return res.end(JSON.stringify({ ok: false, error: e.message })); } }
   if (pathname !== `/mcp/${routeKey}`) { res.writeHead(404); return res.end("not found"); }
-  const chunks=[]; for await (const chunk of req) chunks.push(chunk);
   const server = makeServer(); const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-  res.on("close", () => { transport.close(); server.close(); }); await server.connect(transport); await transport.handleRequest(req, res, Buffer.concat(chunks));
+  res.on("close", () => { transport.close(); server.close(); }); await server.connect(transport); await transport.handleRequest(req, res);
 }).listen(port, "0.0.0.0", () => console.log(`Agent Mail MCP listening on ${port}`));
