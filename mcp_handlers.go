@@ -64,8 +64,15 @@ func (s *AppServer) handleGetLoginQrcode(ctx context.Context) *MCPToolResult {
 
 	result, err := s.xiaohongshuService.GetLoginQrcode(ctx)
 	if err != nil {
+		contents := []MCPContent{{Type: "text", Text: "获取登录二维码失败，下面是服务器实际看到的登录页截图（不是二维码）：" + err.Error()}}
+		if result != nil && result.Img != "" {
+			contents = append(contents, MCPContent{
+				Type: "image", MimeType: "image/png",
+				Data: strings.TrimPrefix(result.Img, "data:image/png;base64,"),
+			})
+		}
 		return &MCPToolResult{
-			Content: []MCPContent{{Type: "text", Text: "获取登录扫码图片失败: " + err.Error()}},
+			Content: contents,
 			IsError: true,
 		}
 	}
