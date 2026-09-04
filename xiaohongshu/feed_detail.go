@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/avast/retry-go/v4"
@@ -18,6 +19,68 @@ import (
 	"github.com/xpzouying/xiaohongshu-mcp/errors"
 	"github.com/xpzouying/xiaohongshu-mcp/humanize"
 )
+
+var attachmentURLPattern = regexp.MustCompile(`https?://[^\s"'<>\\]+`)
+var attachmentHintPattern = regexp.MustCompile(`(?i)(?:\.docx?(?:[?#]|$)|\.pdf(?:[?#]|$)|\.xlsx?(?:[?#]|$)|\.pptx?(?:[?#]|$)|attachment|download|file)`)
+
+// captureAttachmentNetworkURL observes Chrome network responses while the
+// attachment card is opened. XHS may only expose the signed document URL in
+// an API response, leaving window.open/fetch/XHR hooks with nothing to see.
+func captureAttachmentNetworkURL(page *rod.Page) (stop func(), result func() string) {
+	listener, cancel := page.WithCancel()
+	var mu sync.Mutex
+	found := ""
+
+	wait := listener.EachEvent(func(event *proto.NetworkResponseReceived) {
+		mu.Lock()
+		alreadyFound := found != ""
+		mu.Unlock()
+		if alreadyFound {
+			return
+		}
+
+		responseURL := event.Response.URL
+		mimeType := strings.ToLower(event.Response.MimeType)
+		if !strings.Contains(mimeType, "json") && !attachmentHintPattern.MatchString(responseURL) {
+			return
+		}
+
+		body, err := (&proto.NetworkGetResponseBody{RequestID: event.RequestID}).Call(listener)
+		if err != nil {
+			return
+		}
+		for _, candidate := range attachmentURLPattern.FindAllString(body.Body, -1) {
+			candidate = strings.ReplaceAll(candidate, `\u0026`, "&")
+			candidate = strings.ReplaceAll(candidate, `\\/`, "/")
+			if !attachmentHintPattern.MatchString(candidate) {
+				continue
+			}
+			mu.Lock()
+			if found == "" {
+				found = candidate
+				logrus.Infof("已从浏览器网络响应捕获附件地址")
+			}
+			mu.Unlock()
+			return
+		}
+
+		if attachmentHintPattern.MatchString(responseURL) {
+			mu.Lock()
+			if found == "" {
+				found = responseURL
+				logrus.Infof("已从浏览器网络请求捕获附件地址")
+			}
+			mu.Unlock()
+		}
+	})
+	go wait()
+
+	return cancel, func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return found
+	}
+}
 
 // ========== 配置常量 ==========
 const (
@@ -1103,6 +1166,8 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		return nil, nil
 	}
 	logrus.Infof("尝试打开附件卡: %s", name)
+	stopNetworkCapture, getNetworkURL := captureAttachmentNetworkURL(page)
+	defer stopNetworkCapture()
 
 	// File cards often open a signed document page instead of triggering a
 	// browser download. Capture explicit links, window.open calls and a same-tab
@@ -1169,6 +1234,9 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		if (resource) return resource;
 		return location.href !== before ? location.href : '';
 	}`).String()
+	if networkURL := getNetworkURL(); networkURL != "" {
+		return &FeedAttachment{Name: name, URL: networkURL, Source: "browser-network"}, nil
+	}
 	if openedURL != "" {
 		return &FeedAttachment{Name: name, URL: openedURL, Source: "browser-open"}, nil
 	}
