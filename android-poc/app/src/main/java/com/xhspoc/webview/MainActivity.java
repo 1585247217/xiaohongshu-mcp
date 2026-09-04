@@ -11,7 +11,7 @@ import android.widget.Button;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
-    private static final String LOGIN_URL = "https://www.xiaohongshu.com/login";
+    private static final String LOGIN_URL = "https://www.xiaohongshu.com/explore";
     private static final String ATTACHMENT_URL = "https://xhslink.cn/o/6ps3iDim5IT";
     private static final String COOKIE_URL = "https://www.xiaohongshu.com";
 
@@ -41,6 +41,11 @@ public class MainActivity extends Activity {
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setDatabaseEnabled(true);
+        webView.getSettings().setUseWideViewPort(true);
+        webView.getSettings().setLoadWithOverviewMode(true);
+        webView.getSettings().setUserAgentString(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        + "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -56,7 +61,7 @@ public class MainActivity extends Activity {
     }
 
     private void openLogin() {
-        status.setText("正在打开登录页。请使用手机号验证码登录。");
+        status.setText("正在打开网页版。请点页面内的登录，再选择手机号验证码登录。");
         webView.loadUrl(LOGIN_URL);
     }
 
