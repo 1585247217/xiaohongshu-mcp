@@ -3,18 +3,30 @@ package com.xhspoc.webview;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Environment;
 import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
+import android.webkit.URLUtil;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.TextView;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 public class MainActivity extends Activity {
     private static final String LOGIN_URL = "https://www.xiaohongshu.com/explore";
     private static final String ATTACHMENT_URL = "https://xhslink.cn/o/6ps3iDim5IT";
     private static final String COOKIE_URL = "https://www.xiaohongshu.com";
 
+    private final ExecutorService downloader = Executors.newSingleThreadExecutor();
     private WebView webView;
     private TextView status;
 
@@ -58,6 +70,7 @@ public class MainActivity extends Activity {
                 status.setText("页面已加载：" + safeUrl(url) + "\n标题：" + view.getTitle());
             }
         });
+        webView.setDownloadListener(this::downloadAttachment);
     }
 
     private void openLogin() {
@@ -68,6 +81,68 @@ public class MainActivity extends Activity {
     private void openAttachment() {
         status.setText("正在打开附件测试帖。");
         webView.loadUrl(ATTACHMENT_URL);
+    }
+
+    private void downloadAttachment(
+            String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+        if (url.startsWith("blob:")) {
+            status.setText("下载被网页包装为临时 blob URL；已记录，下一版需要从页面导出该文件。");
+            return;
+        }
+        String filename = URLUtil.guessFileName(url, contentDisposition, mimeType);
+        status.setText("已拦截下载，正在保存：" + filename);
+        String pageUrl = webView.getUrl();
+        downloader.execute(() -> saveAttachment(url, userAgent, pageUrl, filename));
+    }
+
+    private void saveAttachment(String url, String userAgent, String pageUrl, String filename) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(60000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("User-Agent", userAgent);
+            String cookie = CookieManager.getInstance().getCookie(url);
+            if (cookie != null && !cookie.isEmpty()) {
+                connection.setRequestProperty("Cookie", cookie);
+            }
+            if (pageUrl != null && !pageUrl.isEmpty()) {
+                connection.setRequestProperty("Referer", pageUrl);
+            }
+
+            int statusCode = connection.getResponseCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                throw new IllegalStateException("下载响应为 HTTP " + statusCode);
+            }
+
+            File directory = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+            if (directory == null) {
+                throw new IllegalStateException("无法创建应用下载目录");
+            }
+            File target = new File(directory, filename);
+            try (InputStream input = connection.getInputStream();
+                 FileOutputStream output = new FileOutputStream(target)) {
+                byte[] buffer = new byte[32 * 1024];
+                int count;
+                long total = 0;
+                while ((count = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                    total += count;
+                }
+                long finalTotal = total;
+                runOnUiThread(() -> status.setText(
+                        "附件已保存：" + target.getName() + "\n大小：" + finalTotal + " bytes\n"
+                                + "下一步可上传给 Render 抽取文本。"));
+            }
+        } catch (Exception error) {
+            runOnUiThread(() -> status.setText("附件下载失败：" + error.getClass().getSimpleName()
+                    + "。已保留失败类型，未显示 Cookie 或下载链接。"));
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 
     private void checkSession() {
@@ -88,5 +163,11 @@ public class MainActivity extends Activity {
     protected void onPause() {
         CookieManager.getInstance().flush();
         super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        downloader.shutdownNow();
+        super.onDestroy();
     }
 }
