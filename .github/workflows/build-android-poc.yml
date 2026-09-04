@@ -1,0 +1,27 @@
+name: Build Android Session PoC
+
+on:
+  push:
+    paths: [ "android-agent/**", ".github/workflows/build-android-poc.yml" ]
+  pull_request:
+    paths: [ "android-agent/**", ".github/workflows/build-android-poc.yml" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Download Gradle
+        run: |
+          curl -fsSL https://services.gradle.org/distributions/gradle-8.11.1-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+      - name: Build debug APK
+        run: /tmp/gradle-8.11.1/bin/gradle -p android-agent :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xhs-session-poc-debug-apk
+          path: android-agent/app/build/outputs/apk/debug/app-debug.apk
