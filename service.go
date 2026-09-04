@@ -136,7 +136,7 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 	return response, nil
 }
 
-// GetLoginQrcode 获取登录的扫码二维码
+// GetLoginQrcode 获取登录的扫码二维码。
 func (s *XiaohongshuService) GetLoginQrcode(ctx context.Context) (*LoginQrcodeResponse, error) {
 	now := time.Now()
 	if image, remaining, ok := s.logins.cachedQR(now); ok {
@@ -146,44 +146,47 @@ func (s *XiaohongshuService) GetLoginQrcode(ctx context.Context) (*LoginQrcodeRe
 		return nil, fmt.Errorf("小红书登录页触发验证码，已暂停重复请求，约 %s 后可重试", remaining.Round(time.Minute))
 	}
 
+	// ChatGPT limits one MCP call to about 30 seconds while the XHS login page
+	// can take longer to render. Prepare it in a persistent browser and let the
+	// next call return the cached QR immediately.
+	if s.logins.beginPreparing() {
+		go s.prepareLoginQrcode()
+	}
+	return nil, fmt.Errorf("二维码正在准备中，请稍后重试")
+}
+
+func (s *XiaohongshuService) prepareLoginQrcode() {
+	defer s.logins.finishPreparing()
+
 	b := newBrowser()
 	page := b.NewPage()
-
-	deferFunc := func() {
+	closeBrowser := func() {
 		_ = page.Close()
 		b.Close()
 	}
 
-	loginAction := xiaohongshu.NewLogin(page)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
 
+	loginAction := xiaohongshu.NewLogin(page)
 	img, loggedIn, err := loginAction.FetchQrcodeImage(ctx)
-	if err != nil || loggedIn {
-		defer deferFunc()
-	}
 	if err != nil {
+		closeBrowser()
 		if strings.Contains(err.Error(), "/website-login/captcha") {
 			s.logins.blockFor(30 * time.Minute)
 		}
-		return &LoginQrcodeResponse{Img: img}, err
+		logrus.Warnf("后台准备小红书二维码失败: %v", err)
+		return
+	}
+	if loggedIn {
+		closeBrowser()
+		return
 	}
 
 	timeout := 4 * time.Minute
-
-	if !loggedIn {
-		s.logins.cacheQR(img, timeout)
-		s.waitScanInBackground(loginAction, page, deferFunc, timeout)
-	}
-
-	return &LoginQrcodeResponse{
-		Timeout: func() string {
-			if loggedIn {
-				return "0s"
-			}
-			return timeout.String()
-		}(),
-		Img:        img,
-		IsLoggedIn: loggedIn,
-	}, nil
+	s.logins.cacheQR(img, timeout)
+	logrus.Info("小红书二维码已准备完成")
+	s.waitScanInBackground(loginAction, page, closeBrowser, timeout)
 }
 
 // waitScanInBackground 在后台等用户扫码，扫上了就存 cookie。

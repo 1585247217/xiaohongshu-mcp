@@ -23,7 +23,7 @@ func navigateLoginExplore(ctx context.Context, page *rod.Page) error {
 
 	// The explore page keeps long-lived requests open on some XHS builds, so
 	// waiting for the browser load event can consume the entire MCP deadline.
-	navCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	navCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	pp := page.Context(navCtx)
 	navErr := pp.Navigate(exploreURL)

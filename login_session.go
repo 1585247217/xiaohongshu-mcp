@@ -17,6 +17,7 @@ type loginSessions struct {
 	qrImage string
 	qrUntil time.Time
 	blockedUntil time.Time
+	preparing bool
 }
 
 func (l *loginSessions) cachedQR(now time.Time) (string, time.Duration, bool) {
@@ -77,4 +78,21 @@ func (l *loginSessions) finish(seq uint64) {
 		l.qrImage = ""
 		l.qrUntil = time.Time{}
 	}
+}
+
+// beginPreparing ensures a single background QR page is created at a time.
+func (l *loginSessions) beginPreparing() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.preparing {
+		return false
+	}
+	l.preparing = true
+	return true
+}
+
+func (l *loginSessions) finishPreparing() {
+	l.mu.Lock()
+	l.preparing = false
+	l.mu.Unlock()
 }
