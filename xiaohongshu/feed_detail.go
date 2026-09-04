@@ -178,14 +178,10 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	err := retry.Do(
 		func() error {
 			page.MustNavigate(url)
-			// XHS continuously mutates counters, recommendations and comments. A
-			// strict zero-diff DOM wait can therefore run until the outer MCP
-			// timeout. Give the main page a bounded chance to settle, then let the
-			// note-state validation below decide whether usable content arrived.
-			stablePage := page.Timeout(12 * time.Second)
-			if stableErr := stablePage.WaitDOMStable(time.Second, 0.08); stableErr != nil {
-				logrus.Infof("页面持续动态更新，结束稳定等待并继续检查笔记数据: %v", stableErr)
-			}
+			// Do not wait for DOM stability here. XHS continuously mutates the
+			// page and may redirect the visible document while retaining note
+			// state in memory. The state retry below is the readiness check, and
+			// starting it immediately preserves short-lived attachment cards.
 			return nil
 		},
 		retry.Attempts(3),
@@ -199,8 +195,6 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		logrus.Errorf("页面导航失败: %v", err)
 		return nil, err
 	}
-	humanize.Delay(ctx, humanize.AfterNavigate)
-
 	if err := checkPageAccessible(page); err != nil {
 		return nil, err
 	}
