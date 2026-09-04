@@ -14,7 +14,7 @@ func NewNavigate(page *rod.Page) *NavigateAction { return &NavigateAction{page: 
 
 func (n *NavigateAction) ToExplorePage(ctx context.Context) error {
     page := n.page.Context(ctx).Timeout(25 * time.Second)
-    if _, err := page.Navigate("https://www.xiaohongshu.com/explore"); err != nil { return err }
+    if err := page.Navigate("https://www.xiaohongshu.com/explore"); err != nil { return err }
     if err := page.WaitLoad(); err != nil { return err }
     if _, err := page.Element(`div#app`); err != nil { return err }
     return nil
