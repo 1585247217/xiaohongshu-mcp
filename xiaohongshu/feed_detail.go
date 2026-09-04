@@ -40,7 +40,7 @@ func captureAttachmentNetworkURL(page *rod.Page) (stop func(), result func() str
 		}
 
 		responseURL := event.Response.URL
-		mimeType := strings.ToLower(event.Response.MimeType)
+		mimeType := strings.ToLower(event.Response.MIMEType)
 		if !strings.Contains(mimeType, "json") && !attachmentHintPattern.MatchString(responseURL) {
 			return
 		}
