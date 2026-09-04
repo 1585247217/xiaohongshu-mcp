@@ -1023,7 +1023,7 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 	// 使用retry-go来处理可能的DOM查询失败
 	err := retry.Do(
 		func() error {
-			evalResult := page.MustEval(`() => {
+			evalResult, evalErr := page.Eval(`() => {
 				if (window.__INITIAL_STATE__ &&
 					window.__INITIAL_STATE__.note &&
 					window.__INITIAL_STATE__.note.noteDetailMap) {
@@ -1035,10 +1035,14 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 					if (usable) return JSON.stringify(noteDetailMap);
 				}
 				return "";
-			}`).String()
+			}`)
+			if evalErr != nil {
+				return fmt.Errorf("读取初始状态时页面发生变化: %w", evalErr)
+			}
+			evalText := evalResult.Value.String()
 
-			if evalResult != "" {
-				result = evalResult
+			if evalText != "" {
+				result = evalText
 				return nil
 			}
 			return fmt.Errorf("无法获取初始状态数据")
