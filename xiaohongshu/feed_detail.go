@@ -1126,7 +1126,7 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 }
 
 func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
-	raw := page.MustEval(`async () => {
+	rawResult, evalErr := page.Eval(`async () => {
 		const keys = ['href', 'data-url', 'data-download-url', 'data-file-url', 'data-src'];
 		const out = [];
 		const add = (name, url, source) => {
@@ -1145,7 +1145,11 @@ func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
 		}
 		for (const url of document.documentElement.innerHTML.match(/https?:\/\/[^\s"'<>]+/g) || []) add('', url, 'html');
 		return JSON.stringify(out);
-	}`).String()
+	}`)
+	if evalErr != nil {
+		return nil, evalErr
+	}
+	raw := rawResult.Value.String()
 	var candidates []FeedAttachment
 	if err := json.Unmarshal([]byte(raw), &candidates); err != nil { return nil, err }
 	seen := make(map[string]bool)
@@ -1370,7 +1374,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	waitCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	waitDownload := page.Browser().Context(waitCtx).WaitDownload(dir)
-	clicked := page.MustEval(`() => {
+	clickedResult, clickErr := page.Eval(`() => {
 		const roots = [document];
 		for (const frame of document.querySelectorAll('iframe')) {
 			try { if (frame.contentDocument) roots.push(frame.contentDocument); } catch (_) {}
@@ -1379,7 +1383,11 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		if (!el) return false;
 		el.click();
 		return true;
-	}`).Bool()
+	}`)
+	if clickErr != nil {
+		return nil, clickErr
+	}
+	clicked := clickedResult.Value.Bool()
 	if !clicked {
 		return nil, nil
 	}
