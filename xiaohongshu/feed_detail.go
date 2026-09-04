@@ -1232,7 +1232,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	// monitoring below.
 	openWatcher := page.Timeout(8 * time.Second)
 	waitOpen := openWatcher.WaitOpen()
-	openedURL := page.MustEval(`async () => {
+	openedResult, openedErr := page.Eval(`async () => {
 		const el = document.querySelector('[data-xhs-attachment-candidate="1"]');
 		if (!el) return '';
 		const direct = [el.href, el.getAttribute('href'), el.getAttribute('data-url'),
@@ -1292,7 +1292,13 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 			.find(value => /(?:docx?|pdf|xlsx?|pptx?|download|attachment|file)/i.test(value));
 		if (resource) return resource;
 		return location.href !== before ? location.href : '';
-	}`).String()
+	}`)
+	openedURL := ""
+	if openedErr != nil {
+		logrus.Infof("附件点击触发页面导航，继续读取浏览器级捕获结果: %v", openedErr)
+	} else {
+		openedURL = openedResult.Value.String()
+	}
 	if networkURL := getNetworkURL(); networkURL != "" {
 		return &FeedAttachment{Name: name, URL: networkURL, Source: "browser-network"}, nil
 	}
