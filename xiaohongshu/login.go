@@ -33,13 +33,14 @@ func navigateLoginExplore(ctx context.Context, page *rod.Page) error {
 		return nil
 	}
 
-	info, infoErr := pp.Info()
+	base := page.Context(ctx)
+	info, infoErr := base.Info()
 	if infoErr != nil || !strings.Contains(info.URL, "xiaohongshu.com") {
 		return errors.Wrap(navErr, "navigate to xiaohongshu login page failed")
 	}
 
 	// The document is already usable; stop only the unfinished navigation.
-	_ = proto.PageStopLoading{}.Call(pp)
+	_ = proto.PageStopLoading{}.Call(base)
 	return nil
 }
 
