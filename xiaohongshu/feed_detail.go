@@ -1217,7 +1217,11 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 
 	var name string
 	nameErr := retry.Do(func() error {
-		nameResult, evalErr := page.Eval(`async () => {
+		// XHS may replace the document shortly after navigation. Bound each
+		// evaluation separately so one stale execution context cannot consume the
+		// entire attachment budget; the next attempt binds to the current page.
+		scanPage := page.Timeout(4 * time.Second)
+		nameResult, evalErr := scanPage.Eval(`async () => {
 		// Attachment cards are lazy-rendered in the note's scroll container.
 		// Move likely content panes through their range before looking for the
 		// card, without scrolling the comments hundreds of times.
@@ -1265,7 +1269,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		}
 		name = nameResult.Value.String()
 		return nil
-	}, retry.Attempts(2), retry.Delay(500*time.Millisecond))
+	}, retry.Attempts(4), retry.Delay(500*time.Millisecond))
 	if nameErr != nil {
 		return nil, nameErr
 	}
