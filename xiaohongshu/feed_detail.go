@@ -230,13 +230,28 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	}
 	if len(response.Note.Attachments) == 0 {
 		logrus.Infof("attachment_stage=dedicated_start")
-		if attachment, attachmentErr := captureAttachmentInDedicatedPage(page, url); attachmentErr != nil {
+		attachment, attachmentErr := captureAttachmentInDedicatedPage(page, url)
+		if attachmentErr != nil {
 			logrus.Infof("attachment_stage=dedicated_failed error_type=%T", attachmentErr)
 		} else if attachment != nil {
 			response.Note.Attachments = append(response.Note.Attachments, *attachment)
 			logrus.Infof("attachment_stage=dedicated_complete source=%s", attachment.Source)
 		} else {
 			logrus.Infof("attachment_stage=dedicated_complete source=none")
+		}
+		// The note payload is already copied into response, so a final click on the
+		// stabilized main page cannot erase the正文 result even if XHS navigates it.
+		if len(response.Note.Attachments) == 0 {
+			logrus.Infof("attachment_stage=main_fallback_start")
+			fallback, fallbackErr := captureAttachmentDownload(page.Timeout(18 * time.Second))
+			if fallbackErr != nil {
+				logrus.Infof("attachment_stage=main_fallback_failed error_type=%T", fallbackErr)
+			} else if fallback != nil {
+				response.Note.Attachments = append(response.Note.Attachments, *fallback)
+				logrus.Infof("attachment_stage=main_fallback_complete source=%s", fallback.Source)
+			} else {
+				logrus.Infof("attachment_stage=main_fallback_complete source=none")
+			}
 		}
 	} else {
 		logrus.Infof("attachment_stage=initial_complete count=%d", len(response.Note.Attachments))
