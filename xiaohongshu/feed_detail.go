@@ -1063,6 +1063,13 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 	if result == "" {
 		return nil, errors.ErrNoFeedDetail
 	}
+	// Once the usable note state is present, keep the current document in place.
+	// XHS may otherwise redirect the headless tab to an empty interstitial while
+	// we are locating its lazy attachment card. This stops only the in-flight
+	// navigation; page JavaScript and explicit attachment clicks remain active.
+	if stopErr := (&proto.PageStopLoading{}).Call(page); stopErr != nil {
+		logrus.Debugf("停止详情页后续导航失败: %v", stopErr)
+	}
 
 	var noteDetailMap map[string]struct {
 		Note     FeedDetail  `json:"note"`
