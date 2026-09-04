@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"time"
-	"strings"
-
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/pkg/errors"
@@ -33,14 +31,11 @@ func navigateLoginExplore(ctx context.Context, page *rod.Page) error {
 		return nil
 	}
 
-	base := page.Context(ctx)
-	info, infoErr := base.Info()
-	if infoErr != nil || !strings.Contains(info.URL, "xiaohongshu.com") {
-		return errors.Wrap(navErr, "navigate to xiaohongshu login page failed")
-	}
-
-	// The document is already usable; stop only the unfinished navigation.
-	_ = proto.PageStopLoading{}.Call(base)
+	// Navigation timeouts are expected because XHS keeps the document loading.
+	// Stop it with a separate short context and continue inspecting the page.
+	stopCtx, stopCancel := context.WithTimeout(ctx, 2*time.Second)
+	_ = proto.PageStopLoading{}.Call(page.Context(stopCtx))
+	stopCancel()
 	return nil
 }
 
@@ -129,18 +124,23 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 
 	time.Sleep(2 * time.Second)
 
-	if exists, _, _ := pp.Has(".main-container .user .link-wrapper .channel"); exists {
+	hasCtx, cancelHas := context.WithTimeout(ctx, 2*time.Second)
+	exists, _, _ := a.page.Context(hasCtx).Has(".main-container .user .link-wrapper .channel")
+	cancelHas()
+	if exists {
 		return "", true, nil
 	}
 
 	// Some variants no longer open the login modal automatically. Trigger the
 	// visible login entry before looking for the QR image.
-	_, _ = pp.Eval(`() => {
+	clickCtx, cancelClick := context.WithTimeout(ctx, 3*time.Second)
+	_, _ = a.page.Context(clickCtx).Eval(`() => {
 		const nodes = [...document.querySelectorAll('button, a, [role=button], div')];
 		const login = nodes.find(el => (el.textContent || '').trim() === '登录' && el.getBoundingClientRect().width > 0);
 		if (login) { login.click(); return true; }
 		return false;
 	}`)
+	cancelClick()
 	time.Sleep(2 * time.Second)
 
 	// Read every known image/canvas variant in one browser evaluation. Sequential
