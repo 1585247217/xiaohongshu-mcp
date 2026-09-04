@@ -177,7 +177,13 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	// 使用retry-go处理页面导航和DOM稳定等待
 	err := retry.Do(
 		func() error {
-			page.MustNavigate(url)
+			navigationPage := page.Timeout(8 * time.Second)
+			if navigationErr := navigationPage.Navigate(url); navigationErr != nil {
+				// The note is a client-rendered page and its useful state is often
+				// available before every resource finishes. Continue to the explicit
+				// state check instead of waiting through a redirect to an interstitial.
+				logrus.Infof("详情页导航未完全结束，提前检查笔记状态: %v", navigationErr)
+			}
 			// Do not wait for DOM stability here. XHS continuously mutates the
 			// page and may redirect the visible document while retaining note
 			// state in memory. The state retry below is the readiness check, and
