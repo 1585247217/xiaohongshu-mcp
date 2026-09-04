@@ -22,6 +22,7 @@ import (
 
 var attachmentURLPattern = regexp.MustCompile(`https?://[^\s"'<>\\]+`)
 var attachmentHintPattern = regexp.MustCompile(`(?i)(?:\.docx?(?:[?#]|$)|\.pdf(?:[?#]|$)|\.xlsx?(?:[?#]|$)|\.pptx?(?:[?#]|$)|attachment|download|file)`)
+var documentNamePattern = regexp.MustCompile(`(?i)\.(?:docx?|pdf|xlsx?|pptx?)`)
 
 // captureAttachmentNetworkURL observes Chrome network responses while the
 // attachment card is opened. XHS may only expose the signed document URL in
@@ -62,6 +63,10 @@ func captureAttachmentNetworkURL(page *rod.Page) (stop func(), result func() str
 			}
 			mu.Unlock()
 			return
+		}
+		if documentNamePattern.MatchString(body.Body) {
+			endpoint := strings.SplitN(responseURL, "?", 2)[0]
+			logrus.Infof("附件元数据响应包含文档名但未发现直链: %s", endpoint)
 		}
 
 		if attachmentHintPattern.MatchString(responseURL) {
@@ -1136,6 +1141,11 @@ func isPlatformFooterDocument(item FeedAttachment) bool {
 // captureAttachmentDownload handles cards whose real URL appears only after
 // a click. The listener is registered before clicking.
 func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
+	// Start before scrolling: some XHS builds fetch attachment metadata while
+	// lazily rendering the card, before it becomes clickable in the DOM.
+	stopNetworkCapture, getNetworkURL := captureAttachmentNetworkURL(page)
+	defer stopNetworkCapture()
+
 	name := page.MustEval(`async () => {
 		// Attachment cards are lazy-rendered in the note's scroll container.
 		// Move likely content panes through their range before looking for the
@@ -1176,11 +1186,18 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		return candidates[0].text;
 	}`).String()
 	if name == "" {
+		if networkURL := getNetworkURL(); networkURL != "" {
+			return &FeedAttachment{Name: "小红书附件", URL: networkURL, Source: "browser-network-render"}, nil
+		}
+		diagnostic := page.MustEval(`() => JSON.stringify({
+			mentionsDoc: /(?:\.docx?|\.pdf|附件|下载)/i.test(document.body?.innerText || ''),
+			frames: document.querySelectorAll('iframe').length,
+			shadowRoots: [...document.querySelectorAll('*')].filter(el => !!el.shadowRoot).length
+		})`).String()
+		logrus.Infof("附件候选未渲染: %s", diagnostic)
 		return nil, nil
 	}
 	logrus.Infof("尝试打开附件卡: %s", name)
-	stopNetworkCapture, getNetworkURL := captureAttachmentNetworkURL(page)
-	defer stopNetworkCapture()
 
 	// File cards often open a signed document page instead of triggering a
 	// browser download. Capture explicit links, window.open calls and a same-tab
