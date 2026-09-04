@@ -23,7 +23,7 @@ func navigateLoginExplore(ctx context.Context, page *rod.Page) error {
 
 	// The explore page keeps long-lived requests open on some XHS builds, so
 	// waiting for the browser load event can consume the entire MCP deadline.
-	navCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	navCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	pp := page.Context(navCtx)
 	navErr := pp.Navigate(exploreURL)
@@ -33,7 +33,7 @@ func navigateLoginExplore(ctx context.Context, page *rod.Page) error {
 
 	// Navigation timeouts are expected because XHS keeps the document loading.
 	// Stop it with a separate short context and continue inspecting the page.
-	stopCtx, stopCancel := context.WithTimeout(ctx, 2*time.Second)
+	stopCtx, stopCancel := context.WithTimeout(ctx, 1*time.Second)
 	_ = proto.PageStopLoading{}.Call(page.Context(stopCtx))
 	stopCancel()
 	return nil
@@ -122,9 +122,9 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 		return "", false, err
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
-	hasCtx, cancelHas := context.WithTimeout(ctx, 2*time.Second)
+	hasCtx, cancelHas := context.WithTimeout(ctx, 1*time.Second)
 	exists, _, _ := a.page.Context(hasCtx).Has(".main-container .user .link-wrapper .channel")
 	cancelHas()
 	if exists {
@@ -133,7 +133,7 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 
 	// Some variants no longer open the login modal automatically. Trigger the
 	// visible login entry before looking for the QR image.
-	clickCtx, cancelClick := context.WithTimeout(ctx, 3*time.Second)
+	clickCtx, cancelClick := context.WithTimeout(ctx, 2*time.Second)
 	_, _ = a.page.Context(clickCtx).Eval(`() => {
 		const nodes = [...document.querySelectorAll('button, a, [role=button], div')];
 		const login = nodes.find(el => (el.textContent || '').trim() === '登录' && el.getBoundingClientRect().width > 0);
@@ -141,12 +141,12 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 		return false;
 	}`)
 	cancelClick()
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// Read every known image/canvas variant in one browser evaluation. Sequential
 	// selector waits can consume the MCP deadline even when the QR is already
 	// visible in a slightly different A/B-test wrapper.
-	qrCtx, cancelQR := context.WithTimeout(ctx, 5*time.Second)
+	qrCtx, cancelQR := context.WithTimeout(ctx, 2*time.Second)
 	qr, qrErr := a.page.Context(qrCtx).Eval(`() => {
 		const selectors = [
 			'.qrcode-img',
@@ -172,7 +172,7 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 
 	// Some builds draw the QR inside a closed component. A full-page screenshot
 	// remains scannable and avoids falsely returning an opaque timeout.
-	shotCtx, cancelShot := context.WithTimeout(ctx, 5*time.Second)
+	shotCtx, cancelShot := context.WithTimeout(ctx, 2*time.Second)
 	png, shotErr := a.page.Context(shotCtx).Screenshot(false, nil)
 	cancelShot()
 	if shotErr == nil && len(png) > 0 {
