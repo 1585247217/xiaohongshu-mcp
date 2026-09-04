@@ -1230,6 +1230,8 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	// browser download. Capture explicit links, window.open calls and a same-tab
 	// navigation from the one intentional click before falling back to download
 	// monitoring below.
+	openWatcher := page.Timeout(8 * time.Second)
+	waitOpen := openWatcher.WaitOpen()
 	openedURL := page.MustEval(`async () => {
 		const el = document.querySelector('[data-xhs-attachment-candidate="1"]');
 		if (!el) return '';
@@ -1293,6 +1295,11 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	}`).String()
 	if networkURL := getNetworkURL(); networkURL != "" {
 		return &FeedAttachment{Name: name, URL: networkURL, Source: "browser-network"}, nil
+	}
+	if openedPage, openErr := waitOpen(); openErr == nil && openedPage != nil {
+		if info, infoErr := openedPage.Info(); infoErr == nil && info.URL != "" && info.URL != "about:blank" {
+			return &FeedAttachment{Name: name, URL: info.URL, Source: "browser-new-page"}, nil
+		}
 	}
 	if openedURL != "" {
 		return &FeedAttachment{Name: name, URL: openedURL, Source: "browser-open"}, nil
