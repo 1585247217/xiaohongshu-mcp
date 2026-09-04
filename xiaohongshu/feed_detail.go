@@ -1121,7 +1121,15 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		const recordResponse = (url, body) => {
 			const text = String(body || '');
 			if (!/(docx?|pdf|xlsx?|pptx?|download|attachment|file)/i.test(url + ' ' + text)) return;
-			for (const value of text.match(/https?:\\/\\/[^\\s"'<>\\\\]+/g) || []) responseURLs.push(value);
+			const visit = value => {
+				if (typeof value === 'string') {
+					if (value.startsWith('http://') || value.startsWith('https://')) responseURLs.push(value);
+					return;
+				}
+				if (Array.isArray(value)) { for (const item of value) visit(item); return; }
+				if (value && typeof value === 'object') { for (const item of Object.values(value)) visit(item); }
+			};
+			try { visit(JSON.parse(text)); } catch (_) {}
 		};
 		const originalOpen = window.open;
 		const originalFetch = window.fetch;
