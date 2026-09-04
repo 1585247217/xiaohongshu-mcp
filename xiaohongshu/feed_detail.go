@@ -1288,7 +1288,23 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 			return originalXHRSend.apply(this, args);
 		};
 		try { el.click(); } catch (_) {}
-		await new Promise(resolve => setTimeout(resolve, 2500));
+		await new Promise(resolve => setTimeout(resolve, 1200));
+		// Some builds open an in-page document preview first. Only interact with
+		// an explicit attachment action inside the newly visible dialog/panel.
+		const panels = [...document.querySelectorAll('[role=dialog], [class*=modal], [class*=dialog], [class*=preview]')]
+			.filter(node => node !== el && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0);
+		for (const panel of panels) {
+			const action = [...panel.querySelectorAll('a, button, [role=button]')].find(node =>
+				/^(下载|打开|查看附件|下载附件|打开附件)$/i.test((node.textContent || node.getAttribute('aria-label') || '').trim()));
+			if (!action) continue;
+			const actionURL = [action.href, action.getAttribute('href'), action.getAttribute('data-url'),
+				action.getAttribute('data-download-url'), action.getAttribute('data-file-url')]
+				.find(value => typeof value === 'string' && /^https?:/i.test(value));
+			if (actionURL) responseURLs.push(new URL(actionURL, before).href);
+			try { action.click(); } catch (_) {}
+			break;
+		}
+		await new Promise(resolve => setTimeout(resolve, 1800));
 		window.open = originalOpen;
 		window.fetch = originalFetch;
 		XMLHttpRequest.prototype.open = originalXHROpen;
