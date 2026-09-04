@@ -1487,6 +1487,14 @@ func captureAttachmentInDedicatedPage(basePage *rod.Page, url string) (*FeedAtta
 		logrus.Infof("attachment_stage=network_captured phase=navigation elapsed_ms=%d", time.Since(startedAt).Milliseconds())
 		return &FeedAttachment{Name: "小红书附件", URL: navigationURL, Source: "dedicated-page-network"}, nil
 	}
+	// Preserve the loaded note document before XHS redirects the headless tab to
+	// an interstitial. Stopping the in-flight load does not stop page JavaScript
+	// or explicit clicks on the attachment card.
+	if stopErr := (&proto.PageStopLoading{}).Call(attachmentPage); stopErr != nil {
+		logrus.Infof("attachment_stage=stop_loading_failed error_type=%T", stopErr)
+	} else {
+		logrus.Infof("attachment_stage=page_stabilized elapsed_ms=%d", time.Since(startedAt).Milliseconds())
+	}
 
 	logrus.Infof("attachment_stage=candidate_scan_start elapsed_ms=%d", time.Since(startedAt).Milliseconds())
 	attachment, captureErr := captureAttachmentDownload(attachmentPage.Timeout(18 * time.Second))
