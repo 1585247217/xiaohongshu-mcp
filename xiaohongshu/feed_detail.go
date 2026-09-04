@@ -1258,8 +1258,14 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		for (const frame of document.querySelectorAll('iframe')) {
 			try { if (frame.contentDocument) roots.push(frame.contentDocument); } catch (_) {}
 		}
-		for (const root of roots) for (const el of root.querySelectorAll('body *')) {
-			const text = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
+		for (const root of roots) for (const el of [...root.querySelectorAll('body *')].slice(0, 5000)) {
+			// Reading textContent for every ancestor repeatedly is quadratic on a
+			// large note page. Prefer labels and direct text nodes so this scan stays
+			// bounded while still finding filename spans inside attachment cards.
+			const directText = [...el.childNodes]
+				.filter(node => node.nodeType === Node.TEXT_NODE)
+				.map(node => node.nodeValue || '').join(' ');
+			const text = (el.getAttribute('title') || el.getAttribute('aria-label') || directText).trim();
 			if (!text || text.length > 200 || blocked.test(text)) continue;
 			const attrs = [el.getAttribute('href'), el.getAttribute('data-url'), el.getAttribute('data-download-url'), el.getAttribute('data-file-url'), el.className].filter(v => typeof v === 'string').join(' ');
 			const explicit = strongHint.test(text + ' ' + attrs);
@@ -1296,8 +1302,11 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 					continue
 				}
 				frameResult, frameEvalErr := framePage.Eval(`() => {
-					const candidates = [...document.querySelectorAll('body *')].filter(el => {
-						const text = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
+					const candidates = [...document.querySelectorAll('body *')].slice(0, 5000).filter(el => {
+						const directText = [...el.childNodes]
+							.filter(node => node.nodeType === Node.TEXT_NODE)
+							.map(node => node.nodeValue || '').join(' ');
+						const text = (el.getAttribute('title') || el.getAttribute('aria-label') || directText).trim();
 						return text.length > 0 && text.length <= 200 && /\.(docx?|pdf|xlsx?|pptx?)(?:\b|$)/i.test(text);
 					});
 					if (!candidates.length) return '';
