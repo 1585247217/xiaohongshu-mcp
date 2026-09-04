@@ -139,60 +139,43 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 	}`)
 	time.Sleep(2 * time.Second)
 
-	// Xiaohongshu has used multiple wrappers and attributes for this image.
-	selectors := []string{
-		".qrcode-img",
-		"[class*=qrcode] img",
-		"[class*=qr-code] img",
-		"img[alt*=二维码]",
-		"img[src^='data:image']",
-	}
-	var el *rod.Element
-	var err error
-	for _, selector := range selectors {
-		el, err = pp.Timeout(4 * time.Second).Element(selector)
-		if err == nil && el != nil {
-			break
+	// Read every known image/canvas variant in one browser evaluation. Sequential
+	// selector waits can consume the MCP deadline even when the QR is already
+	// visible in a slightly different A/B-test wrapper.
+	qr, qrErr := pp.Timeout(5 * time.Second).Eval(`() => {
+		const selectors = [
+			'.qrcode-img',
+			'[class*=qrcode] img',
+			'[class*=qr-code] img',
+			'img[alt*=二维码]',
+			'img[src^="data:image"]'
+		];
+		for (const selector of selectors) {
+			const el = document.querySelector(selector);
+			if (el && el.src) return el.src;
 		}
-	}
-	if el == nil {
-		// A/B variants sometimes paint the QR into a canvas instead of an img.
-		canvas, canvasErr := pp.Eval(`() => {
-			const el = document.querySelector('[class*=qrcode] canvas, [class*=qr-code] canvas, canvas[aria-label*=二维码]');
-			if (!el || !el.width || !el.height) return '';
-			try { return el.toDataURL('image/png'); } catch (_) { return ''; }
-		}`)
-		if canvasErr == nil && canvas.Value.String() != "" {
-			return canvas.Value.String(), false, nil
+		const canvas = document.querySelector('[class*=qrcode] canvas, [class*=qr-code] canvas, canvas[aria-label*=二维码]');
+		if (canvas && canvas.width && canvas.height) {
+			try { return canvas.toDataURL('image/png'); } catch (_) {}
 		}
-
-		// Return a compact diagnostic instead of an opaque timeout so the next
-		// selector update can be based on the page actually served to Render.
-		pageURL := ""
-		if info, infoErr := pp.Info(); infoErr == nil {
-			pageURL = info.URL
-		}
-		bodyText := ""
-		if body, bodyErr := pp.Eval(`() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 500)`); bodyErr == nil {
-			bodyText = body.Value.String()
-		}
-		// Preserve what the server actually saw. The caller labels this as a
-		// diagnostic page screenshot, never as a scannable QR code.
-		screenshot := ""
-		if png, shotErr := pp.Screenshot(false, nil); shotErr == nil && len(png) > 0 {
-			screenshot = "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
-		}
-		return screenshot, false, errors.Wrapf(err, "qrcode element not found (url=%s, page=%q)", pageURL, bodyText)
-	}
-	src, err := el.Attribute("src")
-	if err != nil {
-		return "", false, errors.Wrap(err, "get qrcode src failed")
-	}
-	if src == nil || len(*src) == 0 {
-		return "", false, errors.New("qrcode src is empty")
+		return '';
+	}`)
+	if qrErr == nil && qr.Value.String() != "" {
+		return qr.Value.String(), false, nil
 	}
 
-	return *src, false, nil
+	// Some builds draw the QR inside a closed component. A full-page screenshot
+	// remains scannable and avoids falsely returning an opaque timeout.
+	if png, shotErr := pp.Timeout(5 * time.Second).Screenshot(false, nil); shotErr == nil && len(png) > 0 {
+		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), false, nil
+	}
+
+	pageURL := ""
+	if info, infoErr := pp.Info(); infoErr == nil {
+		pageURL = info.URL
+	}
+	return "", false, errors.Wrapf(qrErr, "qrcode not found (url=%s)", pageURL)
+
 }
 
 func (a *LoginAction) WaitForLogin(ctx context.Context) bool {
