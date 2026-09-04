@@ -1067,6 +1067,9 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 			return nil, fmt.Errorf("feed %s not found in noteDetailMap", feedID)
 		}
 		for mapKey, onlyDetail := range noteDetailMap {
+			if onlyDetail.Note.NoteID == "" && onlyDetail.Note.Title == "" && onlyDetail.Note.Desc == "" {
+				return nil, fmt.Errorf("feed %s not found in noteDetailMap (sole entry is empty)", feedID)
+			}
 			noteDetail = onlyDetail
 			logrus.Infof("noteDetailMap 键与分享 ID 不同，使用页面唯一笔记: %s", mapKey)
 		}
