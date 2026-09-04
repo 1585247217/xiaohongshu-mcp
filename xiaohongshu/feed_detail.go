@@ -42,7 +42,8 @@ func captureAttachmentNetworkURL(page *rod.Page) (stop func(), result func() str
 
 		responseURL := event.Response.URL
 		mimeType := strings.ToLower(event.Response.MIMEType)
-		if !strings.Contains(mimeType, "json") && !attachmentHintPattern.MatchString(responseURL) {
+		isJSON := strings.Contains(mimeType, "json")
+		if !isJSON && !directAttachmentURLPattern.MatchString(responseURL) {
 			return
 		}
 
@@ -53,7 +54,7 @@ func captureAttachmentNetworkURL(page *rod.Page) (stop func(), result func() str
 		for _, candidate := range attachmentURLPattern.FindAllString(body.Body, -1) {
 			candidate = strings.ReplaceAll(candidate, `\u0026`, "&")
 			candidate = strings.ReplaceAll(candidate, `\\/`, "/")
-			if !attachmentHintPattern.MatchString(candidate) {
+			if !directAttachmentURLPattern.MatchString(candidate) {
 				continue
 			}
 			mu.Lock()
@@ -64,12 +65,12 @@ func captureAttachmentNetworkURL(page *rod.Page) (stop func(), result func() str
 			mu.Unlock()
 			return
 		}
-		if documentNamePattern.MatchString(body.Body) {
+		if isJSON && documentNamePattern.MatchString(body.Body) {
 			endpoint := strings.SplitN(responseURL, "?", 2)[0]
 			logrus.Infof("附件元数据响应包含文档名但未发现直链: %s", endpoint)
 		}
 
-		if attachmentHintPattern.MatchString(responseURL) {
+		if directAttachmentURLPattern.MatchString(responseURL) {
 			mu.Lock()
 			if found == "" {
 				found = responseURL
@@ -211,6 +212,27 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		return nil, err
 	}
 
+	// The attachment card can exist only briefly. Inspect it before the slower
+	// note-state retry loop; if its click navigates this tab, restore the note
+	// URL before extracting the normal response.
+	var earlyAttachment *FeedAttachment
+	if navigationURL := getNavigationAttachmentURL(); navigationURL != "" {
+		earlyAttachment = &FeedAttachment{Name: "小红书附件", URL: navigationURL, Source: "browser-network-navigation"}
+	} else {
+		attachmentPage := page.Timeout(18 * time.Second)
+		if attachment, attachmentErr := captureAttachmentDownload(attachmentPage); attachmentErr != nil {
+			logrus.Debugf("提前捕捉附件失败: %v", attachmentErr)
+		} else {
+			earlyAttachment = attachment
+		}
+	}
+	if info, infoErr := page.Info(); infoErr == nil && !strings.Contains(info.URL, feedID) {
+		restorePage := page.Timeout(8 * time.Second)
+		if restoreErr := restorePage.Navigate(url); restoreErr != nil {
+			logrus.Debugf("恢复笔记页未完全结束，继续读取已加载状态: %v", restoreErr)
+		}
+	}
+
 	if loadAllComments {
 		if err := f.loadAllCommentsWithConfig(ctx, page, config); err != nil {
 			logrus.Warnf("加载全部评论失败: %v", err)
@@ -222,7 +244,7 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		return nil, err
 	}
 
-	return f.extractFeedDetail(page, feedID, getNavigationAttachmentURL)
+	return f.extractFeedDetail(page, feedID, earlyAttachment, getNavigationAttachmentURL)
 }
 
 // ========== 评论加载器 ==========
@@ -1023,7 +1045,7 @@ func checkPageAccessible(page *rod.Page) error {
 
 // ========== 数据提取 ==========
 
-func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string, getNavigationAttachmentURL func() string) (*FeedDetailResponse, error) {
+func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string, earlyAttachment *FeedAttachment, getNavigationAttachmentURL func() string) (*FeedDetailResponse, error) {
 	var result string
 
 	// 使用retry-go来处理可能的DOM查询失败
@@ -1106,23 +1128,15 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string, getN
 	// that one explicit download before scanning passive DOM attributes: clicking
 	// while scanning can consume the browser download event and leave us without
 	// its signed URL.
-	var capturedAttachment *FeedAttachment
-	if navigationURL := getNavigationAttachmentURL(); navigationURL != "" {
-		capturedAttachment = &FeedAttachment{
-			Name:   "小红书附件",
-			URL:    navigationURL,
-			Source: "browser-network-navigation",
-		}
-		logrus.Infof("使用页面首轮网络响应中的附件地址")
-	} else {
-		// Keep the interactive fallback bounded. It is useful when the initial
-		// response contains no direct URL, but must not hold the whole MCP call
-		// open for more than one short attempt.
-		attachmentPage := page.Timeout(18 * time.Second)
-		if attachment, err := captureAttachmentDownload(attachmentPage); err != nil {
-			logrus.Debugf("捕捉附件下载失败: %v", err)
-		} else {
-			capturedAttachment = attachment
+	capturedAttachment := earlyAttachment
+	if capturedAttachment == nil {
+		if navigationURL := getNavigationAttachmentURL(); navigationURL != "" {
+			capturedAttachment = &FeedAttachment{
+				Name:   "小红书附件",
+				URL:    navigationURL,
+				Source: "browser-network-navigation",
+			}
+			logrus.Infof("使用页面首轮网络响应中的附件地址")
 		}
 	}
 	// Cards that already expose a direct URL are absent from noteDetailMap, so
