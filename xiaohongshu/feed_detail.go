@@ -170,6 +170,12 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	page := f.page.Context(ctx).Timeout(10 * time.Minute)
 	url := makeFeedDetailURL(feedID, xsecToken)
 
+	// Start attachment response capture before navigation. The signed document
+	// URL may exist only in the initial note API response and disappear before
+	// the lazy attachment card reaches the DOM.
+	stopAttachmentCapture, getNavigationAttachmentURL := captureAttachmentNetworkURL(page)
+	defer stopAttachmentCapture()
+
 	logrus.Infof("打开 feed 详情页: %s", url)
 	logrus.Infof("配置: 点击更多=%v, 回复阈值=%d, 最大评论数=%d, 滚动速度=%s",
 		config.ClickMoreReplies, config.MaxRepliesThreshold, config.MaxCommentItems, config.ScrollSpeed)
@@ -216,7 +222,7 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		return nil, err
 	}
 
-	return f.extractFeedDetail(page, feedID)
+	return f.extractFeedDetail(page, feedID, getNavigationAttachmentURL)
 }
 
 // ========== 评论加载器 ==========
@@ -1017,7 +1023,7 @@ func checkPageAccessible(page *rod.Page) error {
 
 // ========== 数据提取 ==========
 
-func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*FeedDetailResponse, error) {
+func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string, getNavigationAttachmentURL func() string) (*FeedDetailResponse, error) {
 	var result string
 
 	// 使用retry-go来处理可能的DOM查询失败
@@ -1101,10 +1107,23 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 	// while scanning can consume the browser download event and leave us without
 	// its signed URL.
 	var capturedAttachment *FeedAttachment
-	if attachment, err := captureAttachmentDownload(page); err != nil {
-		logrus.Debugf("捕捉附件下载失败: %v", err)
+	if navigationURL := getNavigationAttachmentURL(); navigationURL != "" {
+		capturedAttachment = &FeedAttachment{
+			Name:   "小红书附件",
+			URL:    navigationURL,
+			Source: "browser-network-navigation",
+		}
+		logrus.Infof("使用页面首轮网络响应中的附件地址")
 	} else {
-		capturedAttachment = attachment
+		// Keep the interactive fallback bounded. It is useful when the initial
+		// response contains no direct URL, but must not hold the whole MCP call
+		// open for more than one short attempt.
+		attachmentPage := page.Timeout(18 * time.Second)
+		if attachment, err := captureAttachmentDownload(attachmentPage); err != nil {
+			logrus.Debugf("捕捉附件下载失败: %v", err)
+		} else {
+			capturedAttachment = attachment
+		}
 	}
 	// Cards that already expose a direct URL are absent from noteDetailMap, so
 	// inspect their rendered anchors and data attributes as a second source.
@@ -1235,7 +1254,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		}
 		name = nameResult.Value.String()
 		return nil
-	}, retry.Attempts(3), retry.Delay(700*time.Millisecond))
+	}, retry.Attempts(2), retry.Delay(500*time.Millisecond))
 	if nameErr != nil {
 		return nil, nameErr
 	}
@@ -1287,7 +1306,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	// browser download. Capture explicit links, window.open calls and a same-tab
 	// navigation from the one intentional click before falling back to download
 	// monitoring below.
-	openWatcher := page.Timeout(8 * time.Second)
+	openWatcher := page.Timeout(3 * time.Second)
 	waitOpen := openWatcher.WaitOpen()
 	openedResult, openedErr := candidatePage.Eval(`async () => {
 		const roots = [document];
@@ -1405,7 +1424,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	}
 	defer os.RemoveAll(dir)
 
-	waitCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	waitDownload := page.Browser().Context(waitCtx).WaitDownload(dir)
 	clickedResult, clickErr := candidatePage.Eval(`() => {
