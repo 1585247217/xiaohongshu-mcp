@@ -1318,13 +1318,23 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 			.reverse()
 			.find(value => /(?:docx?|pdf|xlsx?|pptx?|download|attachment|file)/i.test(value));
 		if (resource) return resource;
-		return location.href !== before ? location.href : '';
+		if (location.href !== before) return location.href;
+		const visiblePanels = [...document.querySelectorAll('[role=dialog], [class*=modal], [class*=dialog], [class*=preview]')]
+			.filter(node => node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0);
+		const labels = visiblePanels.flatMap(panel => [...panel.querySelectorAll('a, button, [role=button]')]
+			.map(node => (node.textContent || node.getAttribute('aria-label') || '').trim())
+			.filter(Boolean)).slice(0, 12);
+		return '__XHS_ATTACHMENT_DIAG__' + JSON.stringify({panels: visiblePanels.length, actions: labels});
 	}`)
 	openedURL := ""
 	if openedErr != nil {
 		logrus.Infof("附件点击触发页面导航，继续读取浏览器级捕获结果: %v", openedErr)
 	} else {
 		openedURL = openedResult.Value.String()
+		if strings.HasPrefix(openedURL, "__XHS_ATTACHMENT_DIAG__") {
+			logrus.Infof("附件预览结构: %s", strings.TrimPrefix(openedURL, "__XHS_ATTACHMENT_DIAG__"))
+			openedURL = ""
+		}
 	}
 	if networkURL := getNetworkURL(); networkURL != "" {
 		return &FeedAttachment{Name: name, URL: networkURL, Source: "browser-network"}, nil
