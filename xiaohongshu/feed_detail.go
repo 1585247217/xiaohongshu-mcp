@@ -1173,7 +1173,9 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	stopNetworkCapture, getNetworkURL := captureAttachmentNetworkURL(page)
 	defer stopNetworkCapture()
 
-	name := page.MustEval(`async () => {
+	var name string
+	nameErr := retry.Do(func() error {
+		nameResult, evalErr := page.Eval(`async () => {
 		// Attachment cards are lazy-rendered in the note's scroll container.
 		// Move likely content panes through their range before looking for the
 		// card, without scrolling the comments hundreds of times.
@@ -1211,7 +1213,16 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		if (!candidates.length) return '';
 		candidates[0].control.setAttribute('data-xhs-attachment-candidate', '1');
 		return candidates[0].text;
-	}`).String()
+		}`)
+		if evalErr != nil {
+			return fmt.Errorf("识别附件卡时页面发生变化: %w", evalErr)
+		}
+		name = nameResult.Value.String()
+		return nil
+	}, retry.Attempts(3), retry.Delay(700*time.Millisecond))
+	if nameErr != nil {
+		return nil, nameErr
+	}
 	if name == "" {
 		if networkURL := getNetworkURL(); networkURL != "" {
 			return &FeedAttachment{Name: "小红书附件", URL: networkURL, Source: "browser-network-render"}, nil
