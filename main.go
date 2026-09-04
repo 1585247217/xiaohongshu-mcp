@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/browser"
@@ -19,8 +20,16 @@ func main() {
 		port     string
 		token    string
 	)
+	defaultPort := ":18060"
+	if renderPort := strings.TrimSpace(os.Getenv("PORT")); renderPort != "" {
+		if strings.HasPrefix(renderPort, ":") {
+			defaultPort = renderPort
+		} else {
+			defaultPort = ":" + renderPort
+		}
+	}
 	flag.BoolVar(&headless, "headless", true, "是否无头模式")
-	flag.StringVar(&port, "port", ":18060", "端口")
+	flag.StringVar(&port, "port", defaultPort, "端口")
 	flag.StringVar(&token, "token", "", "鉴权 Token，留空则读取 AUTH_TOKEN")
 	flag.Parse()
 	if token == "" {
