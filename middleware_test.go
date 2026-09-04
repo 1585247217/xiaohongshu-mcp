@@ -12,7 +12,7 @@ import (
 func newAuthTestRouter(token string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(authMiddleware(token))
+	router.Use(authMiddleware(token, nil))
 	router.GET("/protected", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
