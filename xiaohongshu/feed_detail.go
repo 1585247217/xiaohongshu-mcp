@@ -994,19 +994,33 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 	if !exists {
 		return nil, fmt.Errorf("feed %s not found in noteDetailMap", feedID)
 	}
-	// Some posts expose documents only as interactive attachment cards. They
-	// are absent from noteDetailMap, so inspect rendered anchors and download
-	// attributes as a second source.
+	// Some posts expose documents only as interactive attachment cards. Capture
+	// that one explicit download before scanning passive DOM attributes: clicking
+	// while scanning can consume the browser download event and leave us without
+	// its signed URL.
+	var capturedAttachment *FeedAttachment
+	if attachment, err := captureAttachmentDownload(page); err != nil {
+		logrus.Debugf("捕捉附件下载失败: %v", err)
+	} else {
+		capturedAttachment = attachment
+	}
+	// Cards that already expose a direct URL are absent from noteDetailMap, so
+	// inspect their rendered anchors and data attributes as a second source.
 	if attachments, err := extractRenderedAttachments(page); err != nil {
 		logrus.Debugf("提取页面附件失败: %v", err)
 	} else {
 		noteDetail.Note.Attachments = attachments
 	}
-	if len(noteDetail.Note.Attachments) == 0 {
-		if attachment, err := captureAttachmentDownload(page); err != nil {
-			logrus.Debugf("捕捉附件下载失败: %v", err)
-		} else if attachment != nil {
-			noteDetail.Note.Attachments = append(noteDetail.Note.Attachments, *attachment)
+	if capturedAttachment != nil {
+		found := false
+		for _, attachment := range noteDetail.Note.Attachments {
+			if attachment.URL == capturedAttachment.URL {
+				found = true
+				break
+			}
+		}
+		if !found {
+			noteDetail.Note.Attachments = append(noteDetail.Note.Attachments, *capturedAttachment)
 		}
 	}
 
@@ -1033,20 +1047,6 @@ func extractRenderedAttachments(page *rod.Page) ([]FeedAttachment, error) {
 				const value = el.getAttribute(key);
 				add(name, value, key);
 			}
-		}
-		// Some attachment cards have no href until their button is pressed. Click
-		// only non-link controls with an attachment-like label, then inspect the
-		// browser resource list. This avoids following ordinary post links.
-		const existingResources = new Set(performance.getEntriesByType('resource').map(item => item.name));
-		for (const el of [...document.querySelectorAll('button, [role=button]')].slice(0, 80)) {
-			const name = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
-			if (/(docx?|pdf|xlsx?|pptx?|附件|文件|下载|download|attachment)/i.test(name)) {
-				try { el.click(); } catch (_) {}
-			}
-		}
-		await new Promise(resolve => setTimeout(resolve, 800));
-		for (const item of performance.getEntriesByType('resource')) {
-			if (!existingResources.has(item.name)) add('', item.name, 'network');
 		}
 		for (const url of document.documentElement.innerHTML.match(/https?:\/\/[^\s"'<>]+/g) || []) add('', url, 'html');
 		return JSON.stringify(out);
