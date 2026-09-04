@@ -1060,7 +1060,16 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 
 	noteDetail, exists := noteDetailMap[feedID]
 	if !exists {
-		return nil, fmt.Errorf("feed %s not found in noteDetailMap", feedID)
+		// XHS sometimes keys the detail map with an internal/cache identifier
+		// instead of the feed id present in the share URL. A detail page contains
+		// exactly one note, so the sole entry is unambiguous and safe to use.
+		if len(noteDetailMap) != 1 {
+			return nil, fmt.Errorf("feed %s not found in noteDetailMap", feedID)
+		}
+		for mapKey, onlyDetail := range noteDetailMap {
+			noteDetail = onlyDetail
+			logrus.Infof("noteDetailMap 键与分享 ID 不同，使用页面唯一笔记: %s", mapKey)
+		}
 	}
 	// Some posts expose documents only as interactive attachment cards. Capture
 	// that one explicit download before scanning passive DOM attributes: clicking
