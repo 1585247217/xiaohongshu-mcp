@@ -3,43 +3,37 @@ package com.xhspoc.webview;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.os.Bundle;
-import android.os.Environment;
 import android.webkit.CookieManager;
-import android.webkit.DownloadListener;
-import android.webkit.URLUtil;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import org.json.JSONObject;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final String LOGIN_URL = "https://www.xiaohongshu.com/explore";
     private static final String ATTACHMENT_URL = "https://xhslink.cn/o/6ps3iDim5IT";
     private static final String COOKIE_URL = "https://www.xiaohongshu.com";
-
-    private final ExecutorService downloader = Executors.newSingleThreadExecutor();
+    private static final String SYNC_URL = "https://xiaohongshu-mcp-read.onrender.com/api/v1/mobile/session";
     private WebView webView;
     private TextView status;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         status = findViewById(R.id.status);
         webView = findViewById(R.id.webview);
         configureWebView();
-
         ((Button) findViewById(R.id.login_button)).setOnClickListener(v -> openLogin());
         ((Button) findViewById(R.id.check_button)).setOnClickListener(v -> checkSession());
+        ((Button) findViewById(R.id.sync_button)).setOnClickListener(v -> askSyncToken());
         ((Button) findViewById(R.id.attachment_button)).setOnClickListener(v -> openAttachment());
         checkSession();
     }
@@ -49,125 +43,59 @@ public class MainActivity extends Activity {
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
-
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setDatabaseEnabled(true);
-        webView.getSettings().setUseWideViewPort(true);
-        webView.getSettings().setLoadWithOverviewMode(true);
-        webView.getSettings().setUserAgentString(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        + "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+        webView.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
         webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String scheme = request.getUrl().getScheme();
-                return !"http".equals(scheme) && !"https".equals(scheme);
+                return !("http".equals(scheme) || "https".equals(scheme));
             }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
+            @Override public void onPageFinished(WebView view, String url) {
                 status.setText("页面已加载：" + safeUrl(url) + "\n标题：" + view.getTitle());
             }
         });
-        webView.setDownloadListener(this::downloadAttachment);
     }
 
-    private void openLogin() {
-        status.setText("正在打开网页版。请点页面内的登录，再选择手机号验证码登录。");
-        webView.loadUrl(LOGIN_URL);
-    }
-
-    private void openAttachment() {
-        status.setText("正在打开附件测试帖。");
-        webView.loadUrl(ATTACHMENT_URL);
-    }
-
-    private void downloadAttachment(
-            String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-        if (url.startsWith("blob:")) {
-            status.setText("下载被网页包装为临时 blob URL；已记录，下一版需要从页面导出该文件。");
-            return;
-        }
-        String filename = URLUtil.guessFileName(url, contentDisposition, mimeType);
-        status.setText("已拦截下载，正在保存：" + filename);
-        String pageUrl = webView.getUrl();
-        downloader.execute(() -> saveAttachment(url, userAgent, pageUrl, filename));
-    }
-
-    private void saveAttachment(String url, String userAgent, String pageUrl, String filename) {
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setConnectTimeout(15000);
-            connection.setReadTimeout(60000);
-            connection.setInstanceFollowRedirects(true);
-            connection.setRequestProperty("User-Agent", userAgent);
-            String cookie = CookieManager.getInstance().getCookie(url);
-            if (cookie != null && !cookie.isEmpty()) {
-                connection.setRequestProperty("Cookie", cookie);
-            }
-            if (pageUrl != null && !pageUrl.isEmpty()) {
-                connection.setRequestProperty("Referer", pageUrl);
-            }
-
-            int statusCode = connection.getResponseCode();
-            if (statusCode < 200 || statusCode >= 300) {
-                throw new IllegalStateException("下载响应为 HTTP " + statusCode);
-            }
-
-            File directory = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-            if (directory == null) {
-                throw new IllegalStateException("无法创建应用下载目录");
-            }
-            File target = new File(directory, filename);
-            try (InputStream input = connection.getInputStream();
-                 FileOutputStream output = new FileOutputStream(target)) {
-                byte[] buffer = new byte[32 * 1024];
-                int count;
-                long total = 0;
-                while ((count = input.read(buffer)) != -1) {
-                    output.write(buffer, 0, count);
-                    total += count;
-                }
-                long finalTotal = total;
-                runOnUiThread(() -> status.setText(
-                        "附件已保存：" + target.getName() + "\n大小：" + finalTotal + " bytes\n"
-                                + "下一步可上传给 Render 抽取文本。"));
-            }
-        } catch (Exception error) {
-            runOnUiThread(() -> status.setText("附件下载失败：" + error.getClass().getSimpleName()
-                    + "。已保留失败类型，未显示 Cookie 或下载链接。"));
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
+    private void openLogin() { status.setText("请在页面内完成登录。"); webView.loadUrl(LOGIN_URL); }
+    private void openAttachment() { status.setText("正在打开附件测试帖。"); webView.loadUrl(ATTACHMENT_URL); }
 
     private void checkSession() {
         CookieManager.getInstance().flush();
         String cookie = CookieManager.getInstance().getCookie(COOKIE_URL);
-        boolean hasCookie = cookie != null && !cookie.isEmpty();
-        status.setText(hasCookie
-                ? "发现小红书会话 Cookie。重启 App 后再次点这里验证是否保留。"
-                : "没有发现小红书会话。请先点“打开登录页”。");
+        status.setText(cookie != null && !cookie.isEmpty() ? "发现会话 Cookie。" : "没有发现会话，请先登录。");
     }
 
-    private String safeUrl(String rawUrl) {
-        int query = rawUrl.indexOf('?');
-        return query >= 0 ? rawUrl.substring(0, query) : rawUrl;
+    private void askSyncToken() {
+        final EditText input = new EditText(this);
+        input.setHint("Render 的 AUTH_TOKEN");
+        input.setSingleLine(true);
+        new AlertDialog.Builder(this).setTitle("同步登录态").setMessage("仅首次同步需要。同步后无需后台运行本 App。")
+            .setView(input).setNegativeButton("取消", null)
+            .setPositiveButton("同步", (d, w) -> syncSession(input.getText().toString().trim())).show();
     }
 
-    @Override
-    protected void onPause() {
+    private void syncSession(String token) {
         CookieManager.getInstance().flush();
-        super.onPause();
+        String cookie = CookieManager.getInstance().getCookie(COOKIE_URL);
+        if (token.isEmpty() || cookie == null || cookie.isEmpty()) { status.setText("缺少 AUTH_TOKEN 或 Cookie。"); return; }
+        status.setText("正在加密同步登录态……");
+        new Thread(() -> {
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL(SYNC_URL).openConnection();
+                c.setRequestMethod("POST"); c.setConnectTimeout(15000); c.setReadTimeout(30000);
+                c.setDoOutput(true); c.setRequestProperty("Content-Type", "application/json");
+                c.setRequestProperty("Authorization", "Bearer " + token);
+                JSONObject body = new JSONObject(); body.put("cookie", cookie);
+                try (OutputStream out = c.getOutputStream()) { out.write(body.toString().getBytes("UTF-8")); }
+                int code = c.getResponseCode();
+                runOnUiThread(() -> status.setText(code == 200 ? "登录态已同步。以后不用运行此 App。" : "同步失败：HTTP " + code));
+                c.disconnect();
+            } catch (Exception e) { runOnUiThread(() -> status.setText("同步失败：" + e.getClass().getSimpleName())); }
+        }).start();
     }
 
-    @Override
-    protected void onDestroy() {
-        downloader.shutdownNow();
-        super.onDestroy();
-    }
+    private String safeUrl(String rawUrl) { int q = rawUrl.indexOf('?'); return q >= 0 ? rawUrl.substring(0, q) : rawUrl; }
+    @Override protected void onPause() { CookieManager.getInstance().flush(); super.onPause(); }
 }
