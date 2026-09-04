@@ -1231,12 +1231,16 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		if networkURL := getNetworkURL(); networkURL != "" {
 			return &FeedAttachment{Name: "小红书附件", URL: networkURL, Source: "browser-network-render"}, nil
 		}
-		diagnostic := page.MustEval(`() => JSON.stringify({
+		diagnosticResult, diagnosticErr := page.Eval(`() => JSON.stringify({
 			mentionsDoc: /(?:\.docx?|\.pdf|附件|下载)/i.test(document.body?.innerText || ''),
 			frames: document.querySelectorAll('iframe').length,
 			shadowRoots: [...document.querySelectorAll('*')].filter(el => !!el.shadowRoot).length
-		})`).String()
-		logrus.Infof("附件候选未渲染: %s", diagnostic)
+		})`)
+		if diagnosticErr == nil {
+			logrus.Infof("附件候选未渲染: %s", diagnosticResult.Value.String())
+		} else {
+			logrus.Infof("附件候选未渲染，页面已导航，跳过诊断: %v", diagnosticErr)
+		}
 		return nil, nil
 	}
 	logrus.Infof("尝试打开附件卡: %s", name)
