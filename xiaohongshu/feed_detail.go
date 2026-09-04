@@ -213,27 +213,6 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		return nil, err
 	}
 
-	// The attachment card can exist only briefly. Inspect it before the slower
-	// note-state retry loop; if its click navigates this tab, restore the note
-	// URL before extracting the normal response.
-	var earlyAttachment *FeedAttachment
-	if navigationURL := getNavigationAttachmentURL(); navigationURL != "" {
-		earlyAttachment = &FeedAttachment{Name: "小红书附件", URL: navigationURL, Source: "browser-network-navigation"}
-	} else {
-		attachmentPage := page.Timeout(18 * time.Second)
-		if attachment, attachmentErr := captureAttachmentDownload(attachmentPage); attachmentErr != nil {
-			logrus.Debugf("提前捕捉附件失败: %v", attachmentErr)
-		} else {
-			earlyAttachment = attachment
-		}
-	}
-	if info, infoErr := page.Info(); infoErr == nil && !strings.Contains(info.URL, feedID) {
-		restorePage := page.Timeout(8 * time.Second)
-		if restoreErr := restorePage.Navigate(url); restoreErr != nil {
-			logrus.Debugf("恢复笔记页未完全结束，继续读取已加载状态: %v", restoreErr)
-		}
-	}
-
 	if loadAllComments {
 		if err := f.loadAllCommentsWithConfig(ctx, page, config); err != nil {
 			logrus.Warnf("加载全部评论失败: %v", err)
@@ -245,7 +224,18 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		return nil, err
 	}
 
-	return f.extractFeedDetail(page, feedID, earlyAttachment, getNavigationAttachmentURL)
+	response, extractErr := f.extractFeedDetail(page, feedID, nil, getNavigationAttachmentURL)
+	if extractErr != nil {
+		return nil, extractErr
+	}
+	if len(response.Note.Attachments) == 0 {
+		if attachment, attachmentErr := captureAttachmentInDedicatedPage(page, url); attachmentErr != nil {
+			logrus.Debugf("独立附件页提取失败: %v", attachmentErr)
+		} else if attachment != nil {
+			response.Note.Attachments = append(response.Note.Attachments, *attachment)
+		}
+	}
+	return response, nil
 }
 
 // ========== 评论加载器 ==========
@@ -1464,6 +1454,40 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		return nil, nil
 	}
 	return &FeedAttachment{Name: name, URL: info.URL, Source: "browser-download"}, nil
+}
+
+// captureAttachmentInDedicatedPage isolates attachment clicks from the note
+// page used for text extraction. Both pages share the same browser context and
+// cookies, while a redirect or preview navigation cannot erase the note state.
+func captureAttachmentInDedicatedPage(basePage *rod.Page, url string) (*FeedAttachment, error) {
+	attachmentPage, err := basePage.Browser().Page(proto.TargetCreateTarget{URL: "about:blank"})
+	if err != nil {
+		return nil, err
+	}
+	defer attachmentPage.Close()
+
+	stopCapture, getNavigationURL := captureAttachmentNetworkURL(attachmentPage)
+	defer stopCapture()
+
+	navigationPage := attachmentPage.Timeout(8 * time.Second)
+	if navigationErr := navigationPage.Navigate(url); navigationErr != nil {
+		logrus.Debugf("独立附件页导航未完全结束，立即扫描: %v", navigationErr)
+	}
+	if navigationURL := getNavigationURL(); navigationURL != "" {
+		return &FeedAttachment{Name: "小红书附件", URL: navigationURL, Source: "dedicated-page-network"}, nil
+	}
+
+	attachment, captureErr := captureAttachmentDownload(attachmentPage.Timeout(18 * time.Second))
+	if captureErr != nil {
+		return nil, captureErr
+	}
+	if attachment != nil {
+		return attachment, nil
+	}
+	if navigationURL := getNavigationURL(); navigationURL != "" {
+		return &FeedAttachment{Name: "小红书附件", URL: navigationURL, Source: "dedicated-page-network"}, nil
+	}
+	return nil, nil
 }
 
 func makeFeedDetailURL(feedID, xsecToken string) string {
