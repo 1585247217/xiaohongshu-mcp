@@ -1103,6 +1103,35 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		return nil, nil
 	}
 
+	// File cards often open a signed document page instead of triggering a
+	// browser download. Capture explicit links, window.open calls and a same-tab
+	// navigation from the one intentional click before falling back to download
+	// monitoring below.
+	openedURL := page.MustEval(`async () => {
+		const el = document.querySelector('[data-xhs-attachment-candidate="1"]');
+		if (!el) return '';
+		const direct = [el.href, el.getAttribute('href'), el.getAttribute('data-url'),
+			el.getAttribute('data-download-url'), el.getAttribute('data-file-url')]
+			.find(value => typeof value === 'string' && /^https?:/i.test(value));
+		if (direct) return new URL(direct, location.href).href;
+		const before = location.href;
+		const opened = [];
+		const originalOpen = window.open;
+		window.open = function(url, ...args) {
+			if (typeof url === 'string') opened.push(url);
+			return originalOpen.call(this, url, ...args);
+		};
+		try { el.click(); } catch (_) {}
+		await new Promise(resolve => setTimeout(resolve, 1200));
+		window.open = originalOpen;
+		const next = opened.find(value => /^https?:/i.test(value));
+		if (next) return new URL(next, before).href;
+		return location.href !== before ? location.href : '';
+	}`).String()
+	if openedURL != "" {
+		return &FeedAttachment{Name: name, URL: openedURL, Source: "browser-open"}, nil
+	}
+
 	dir, err := os.MkdirTemp("", "xhs-attachment-")
 	if err != nil {
 		return nil, err
