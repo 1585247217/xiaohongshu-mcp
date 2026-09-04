@@ -1021,7 +1021,11 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 					window.__INITIAL_STATE__.note &&
 					window.__INITIAL_STATE__.note.noteDetailMap) {
 					const noteDetailMap = window.__INITIAL_STATE__.note.noteDetailMap;
-					return JSON.stringify(noteDetailMap);
+					const usable = Object.values(noteDetailMap).some(item => {
+						const note = item && (item.note || item);
+						return note && (note.noteId || note.id || note.title || note.desc);
+					});
+					if (usable) return JSON.stringify(noteDetailMap);
 				}
 				return "";
 			}`).String()
@@ -1032,9 +1036,9 @@ func (f *FeedDetailAction) extractFeedDetail(page *rod.Page, feedID string) (*Fe
 			}
 			return fmt.Errorf("无法获取初始状态数据")
 		},
-		retry.Attempts(3),
-		retry.Delay(200*time.Millisecond),
-		retry.MaxJitter(300*time.Millisecond),
+		retry.Attempts(8),
+		retry.Delay(900*time.Millisecond),
+		retry.MaxJitter(400*time.Millisecond),
 		retry.OnRetry(func(n uint, err error) {
 			logrus.Debugf("提取Feed详情重试 #%d: %v", n, err)
 		}),
