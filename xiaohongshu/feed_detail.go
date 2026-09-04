@@ -1102,6 +1102,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	if name == "" {
 		return nil, nil
 	}
+	logrus.Infof("尝试打开附件卡: %s", name)
 
 	// File cards often open a signed document page instead of triggering a
 	// browser download. Capture explicit links, window.open calls and a same-tab
@@ -1126,11 +1127,17 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		window.open = originalOpen;
 		const next = opened.find(value => /^https?:/i.test(value));
 		if (next) return new URL(next, before).href;
+		const resource = performance.getEntriesByType('resource')
+			.map(item => item.name)
+			.reverse()
+			.find(value => /(?:docx?|pdf|xlsx?|pptx?|download|attachment|file)/i.test(value));
+		if (resource) return resource;
 		return location.href !== before ? location.href : '';
 	}`).String()
 	if openedURL != "" {
 		return &FeedAttachment{Name: name, URL: openedURL, Source: "browser-open"}, nil
 	}
+	logrus.Infof("附件卡未暴露可读取地址: %s", name)
 
 	dir, err := os.MkdirTemp("", "xhs-attachment-")
 	if err != nil {
