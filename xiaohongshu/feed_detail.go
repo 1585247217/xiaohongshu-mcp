@@ -229,11 +229,17 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		return nil, extractErr
 	}
 	if len(response.Note.Attachments) == 0 {
+		logrus.Infof("attachment_stage=dedicated_start")
 		if attachment, attachmentErr := captureAttachmentInDedicatedPage(page, url); attachmentErr != nil {
-			logrus.Debugf("独立附件页提取失败: %v", attachmentErr)
+			logrus.Infof("attachment_stage=dedicated_failed error_type=%T", attachmentErr)
 		} else if attachment != nil {
 			response.Note.Attachments = append(response.Note.Attachments, *attachment)
+			logrus.Infof("attachment_stage=dedicated_complete source=%s", attachment.Source)
+		} else {
+			logrus.Infof("attachment_stage=dedicated_complete source=none")
 		}
+	} else {
+		logrus.Infof("attachment_stage=initial_complete count=%d", len(response.Note.Attachments))
 	}
 	return response, nil
 }
@@ -1460,33 +1466,43 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 // page used for text extraction. Both pages share the same browser context and
 // cookies, while a redirect or preview navigation cannot erase the note state.
 func captureAttachmentInDedicatedPage(basePage *rod.Page, url string) (*FeedAttachment, error) {
+	startedAt := time.Now()
 	attachmentPage, err := basePage.Browser().Page(proto.TargetCreateTarget{URL: "about:blank"})
 	if err != nil {
 		return nil, err
 	}
 	defer attachmentPage.Close()
+	logrus.Infof("attachment_stage=page_created elapsed_ms=%d", time.Since(startedAt).Milliseconds())
 
 	stopCapture, getNavigationURL := captureAttachmentNetworkURL(attachmentPage)
 	defer stopCapture()
 
 	navigationPage := attachmentPage.Timeout(8 * time.Second)
 	if navigationErr := navigationPage.Navigate(url); navigationErr != nil {
-		logrus.Debugf("独立附件页导航未完全结束，立即扫描: %v", navigationErr)
+		logrus.Infof("attachment_stage=navigation_partial elapsed_ms=%d error_type=%T", time.Since(startedAt).Milliseconds(), navigationErr)
+	} else {
+		logrus.Infof("attachment_stage=navigation_complete elapsed_ms=%d", time.Since(startedAt).Milliseconds())
 	}
 	if navigationURL := getNavigationURL(); navigationURL != "" {
+		logrus.Infof("attachment_stage=network_captured phase=navigation elapsed_ms=%d", time.Since(startedAt).Milliseconds())
 		return &FeedAttachment{Name: "小红书附件", URL: navigationURL, Source: "dedicated-page-network"}, nil
 	}
 
+	logrus.Infof("attachment_stage=candidate_scan_start elapsed_ms=%d", time.Since(startedAt).Milliseconds())
 	attachment, captureErr := captureAttachmentDownload(attachmentPage.Timeout(18 * time.Second))
 	if captureErr != nil {
+		logrus.Infof("attachment_stage=candidate_scan_failed elapsed_ms=%d error_type=%T", time.Since(startedAt).Milliseconds(), captureErr)
 		return nil, captureErr
 	}
 	if attachment != nil {
+		logrus.Infof("attachment_stage=attachment_captured source=%s elapsed_ms=%d", attachment.Source, time.Since(startedAt).Milliseconds())
 		return attachment, nil
 	}
 	if navigationURL := getNavigationURL(); navigationURL != "" {
+		logrus.Infof("attachment_stage=network_captured phase=post_scan elapsed_ms=%d", time.Since(startedAt).Milliseconds())
 		return &FeedAttachment{Name: "小红书附件", URL: navigationURL, Source: "dedicated-page-network"}, nil
 	}
+	logrus.Infof("attachment_stage=no_attachment elapsed_ms=%d", time.Since(startedAt).Milliseconds())
 	return nil, nil
 }
 
