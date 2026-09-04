@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"time"
+	"strings"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/pkg/errors"
 )
 
@@ -18,10 +20,32 @@ func NewLogin(page *rod.Page) *LoginAction {
 	return &LoginAction{page: page}
 }
 
+func navigateLoginExplore(pp *rod.Page) error {
+	const exploreURL = "https://www.xiaohongshu.com/explore"
+
+	// The explore page keeps long-lived requests open on some XHS builds, so
+	// waiting for the browser load event can consume the entire MCP deadline.
+	navErr := pp.Timeout(12 * time.Second).Navigate(exploreURL)
+	if navErr == nil {
+		return nil
+	}
+
+	info, infoErr := pp.Info()
+	if infoErr != nil || !strings.Contains(info.URL, "xiaohongshu.com") {
+		return errors.Wrap(navErr, "navigate to xiaohongshu login page failed")
+	}
+
+	// The document is already usable; stop only the unfinished navigation.
+	_ = proto.PageStopLoading{}.Call(pp)
+	return nil
+}
+
 func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
 	// 加超时保护：只是查登录态的快速检查，不应无限挂（登录扫码的等待在 Login/WaitForLogin 里）
 	pp := a.page.Context(ctx).Timeout(30 * time.Second)
-	pp.MustNavigate("https://www.xiaohongshu.com/explore").MustWaitLoad()
+	if err := navigateLoginExplore(pp); err != nil {
+		return false, err
+	}
 
 	time.Sleep(1 * time.Second)
 
@@ -93,12 +117,10 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 	// page, and an unbounded MustElement call would make the MCP request time out.
 	pp := a.page.Context(ctx).Timeout(45 * time.Second)
 
-	// 导航到小红书首页，这会触发二维码弹窗
-	if err := pp.Navigate("https://www.xiaohongshu.com/explore"); err != nil {
-		return "", false, errors.Wrap(err, "navigate to xiaohongshu login page failed")
-	}
-	if err := pp.WaitLoad(); err != nil {
-		return "", false, errors.Wrap(err, "wait for xiaohongshu login page failed")
+	// 导航到小红书首页，这会触发二维码弹窗。页面的 load 事件可能
+	// 因长连接一直不结束，因此只等待有界导航并继续使用已渲染文档。
+	if err := navigateLoginExplore(pp); err != nil {
+		return "", false, err
 	}
 
 	time.Sleep(2 * time.Second)
