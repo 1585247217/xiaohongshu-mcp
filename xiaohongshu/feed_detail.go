@@ -178,7 +178,14 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	err := retry.Do(
 		func() error {
 			page.MustNavigate(url)
-			page.MustWaitDOMStable()
+			// XHS continuously mutates counters, recommendations and comments. A
+			// strict zero-diff DOM wait can therefore run until the outer MCP
+			// timeout. Give the main page a bounded chance to settle, then let the
+			// note-state validation below decide whether usable content arrived.
+			stablePage := page.Timeout(12 * time.Second)
+			if stableErr := stablePage.WaitDOMStable(time.Second, 0.08); stableErr != nil {
+				logrus.Infof("页面持续动态更新，结束稳定等待并继续检查笔记数据: %v", stableErr)
+			}
 			return nil
 		},
 		retry.Attempts(3),
