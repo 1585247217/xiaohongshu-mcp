@@ -1177,6 +1177,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	// lazily rendering the card, before it becomes clickable in the DOM.
 	stopNetworkCapture, getNetworkURL := captureAttachmentNetworkURL(page)
 	defer stopNetworkCapture()
+	candidatePage := page
 
 	var name string
 	nameErr := retry.Do(func() error {
@@ -1233,6 +1234,32 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		return nil, nameErr
 	}
 	if name == "" {
+		if frameElements, frameErr := page.Elements("iframe"); frameErr == nil {
+			for _, frameElement := range frameElements {
+				framePage, frameErr := frameElement.Frame()
+				if frameErr != nil {
+					continue
+				}
+				frameResult, frameEvalErr := framePage.Eval(`() => {
+					const candidates = [...document.querySelectorAll('body *')].filter(el => {
+						const text = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
+						return text.length > 0 && text.length <= 200 && /\.(docx?|pdf|xlsx?|pptx?)(?:\b|$)/i.test(text);
+					});
+					if (!candidates.length) return '';
+					const control = candidates[0].closest('a, button, [role=button], [class*=file], [class*=attach]') || candidates[0];
+					control.setAttribute('data-xhs-attachment-candidate', '1');
+					return (candidates[0].getAttribute('title') || candidates[0].getAttribute('aria-label') || candidates[0].textContent || '').trim();
+				}`)
+				if frameEvalErr == nil && frameResult.Value.String() != "" {
+					name = frameResult.Value.String()
+					candidatePage = framePage
+					logrus.Infof("已在跨域 frame 中识别附件卡")
+					break
+				}
+			}
+		}
+	}
+	if name == "" {
 		if networkURL := getNetworkURL(); networkURL != "" {
 			return &FeedAttachment{Name: "小红书附件", URL: networkURL, Source: "browser-network-render"}, nil
 		}
@@ -1256,7 +1283,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	// monitoring below.
 	openWatcher := page.Timeout(8 * time.Second)
 	waitOpen := openWatcher.WaitOpen()
-	openedResult, openedErr := page.Eval(`async () => {
+	openedResult, openedErr := candidatePage.Eval(`async () => {
 		const roots = [document];
 		for (const frame of document.querySelectorAll('iframe')) {
 			try { if (frame.contentDocument) roots.push(frame.contentDocument); } catch (_) {}
@@ -1375,7 +1402,7 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	waitCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	waitDownload := page.Browser().Context(waitCtx).WaitDownload(dir)
-	clickedResult, clickErr := page.Eval(`() => {
+	clickedResult, clickErr := candidatePage.Eval(`() => {
 		const roots = [document];
 		for (const frame of document.querySelectorAll('iframe')) {
 			try { if (frame.contentDocument) roots.push(frame.contentDocument); } catch (_) {}
