@@ -7,6 +7,7 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-rod/rod v0.116.2
 	github.com/h2non/filetype v1.1.3
+	github.com/lib/pq v1.10.9
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
