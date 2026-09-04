@@ -1236,20 +1236,10 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		// evaluation separately so one stale execution context cannot consume the
 		// entire attachment budget; the next attempt binds to the current page.
 		scanPage := page.Timeout(4 * time.Second)
-		nameResult, evalErr := scanPage.Eval(`async () => {
-		// Attachment cards are lazy-rendered in the note's scroll container.
-		// Move likely content panes through their range before looking for the
-		// card, without scrolling the comments hundreds of times.
-		const panes = [...document.querySelectorAll('main, article, section, div')]
-			.filter(el => el.scrollHeight > el.clientHeight + 120 && el.clientHeight > 180)
-			.sort((a, b) => (b.clientHeight * b.clientWidth) - (a.clientHeight * a.clientWidth))
-			.slice(0, 4);
-		for (const pane of panes) {
-			const before = pane.scrollTop;
-			pane.scrollTop = Math.min(pane.scrollHeight, Math.max(before, pane.scrollHeight * 0.6));
-		}
-		window.scrollTo(0, Math.max(window.scrollY, document.documentElement.scrollHeight * 0.55));
-		await new Promise(resolve => setTimeout(resolve, 1500));
+		nameResult, evalErr := scanPage.Eval(`() => {
+		// Inspect the current document before scrolling. Programmatic scrolling can
+		// trigger XHS's headless interstitial and replace the execution context
+		// before the card is examined.
 		const blocked = /(医疗器械网络交易服务|互联网药品信息服务|沪公网安备)/;
 		const strongHint = /\.(docx?|pdf|xlsx?|pptx?)(?:\b|$)/i;
 		const weakHint = /(附件|下载)/i;
