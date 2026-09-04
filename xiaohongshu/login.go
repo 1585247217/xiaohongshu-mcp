@@ -20,12 +20,15 @@ func NewLogin(page *rod.Page) *LoginAction {
 	return &LoginAction{page: page}
 }
 
-func navigateLoginExplore(pp *rod.Page) error {
+func navigateLoginExplore(ctx context.Context, page *rod.Page) error {
 	const exploreURL = "https://www.xiaohongshu.com/explore"
 
 	// The explore page keeps long-lived requests open on some XHS builds, so
 	// waiting for the browser load event can consume the entire MCP deadline.
-	navErr := pp.Timeout(12 * time.Second).Navigate(exploreURL)
+	navCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	pp := page.Context(navCtx)
+	navErr := pp.Navigate(exploreURL)
 	if navErr == nil {
 		return nil
 	}
@@ -42,8 +45,8 @@ func navigateLoginExplore(pp *rod.Page) error {
 
 func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
 	// 加超时保护：只是查登录态的快速检查，不应无限挂（登录扫码的等待在 Login/WaitForLogin 里）
-	pp := a.page.Context(ctx).Timeout(30 * time.Second)
-	if err := navigateLoginExplore(pp); err != nil {
+	pp := a.page.Context(ctx)
+	if err := navigateLoginExplore(ctx, a.page); err != nil {
 		return false, err
 	}
 
@@ -115,11 +118,11 @@ func (a *LoginAction) Login(ctx context.Context) error {
 func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error) {
 	// Keep this bounded: Xiaohongshu occasionally changes or rejects the login
 	// page, and an unbounded MustElement call would make the MCP request time out.
-	pp := a.page.Context(ctx).Timeout(45 * time.Second)
+	pp := a.page.Context(ctx)
 
 	// 导航到小红书首页，这会触发二维码弹窗。页面的 load 事件可能
 	// 因长连接一直不结束，因此只等待有界导航并继续使用已渲染文档。
-	if err := navigateLoginExplore(pp); err != nil {
+	if err := navigateLoginExplore(ctx, a.page); err != nil {
 		return "", false, err
 	}
 
@@ -142,7 +145,8 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 	// Read every known image/canvas variant in one browser evaluation. Sequential
 	// selector waits can consume the MCP deadline even when the QR is already
 	// visible in a slightly different A/B-test wrapper.
-	qr, qrErr := pp.Timeout(5 * time.Second).Eval(`() => {
+	qrCtx, cancelQR := context.WithTimeout(ctx, 5*time.Second)
+	qr, qrErr := a.page.Context(qrCtx).Eval(`() => {
 		const selectors = [
 			'.qrcode-img',
 			'[class*=qrcode] img',
@@ -160,13 +164,17 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 		}
 		return '';
 	}`)
+	cancelQR()
 	if qrErr == nil && qr.Value.String() != "" {
 		return qr.Value.String(), false, nil
 	}
 
 	// Some builds draw the QR inside a closed component. A full-page screenshot
 	// remains scannable and avoids falsely returning an opaque timeout.
-	if png, shotErr := pp.Timeout(5 * time.Second).Screenshot(false, nil); shotErr == nil && len(png) > 0 {
+	shotCtx, cancelShot := context.WithTimeout(ctx, 5*time.Second)
+	png, shotErr := a.page.Context(shotCtx).Screenshot(false, nil)
+	cancelShot()
+	if shotErr == nil && len(png) > 0 {
 		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), false, nil
 	}
 
