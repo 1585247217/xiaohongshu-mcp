@@ -1193,7 +1193,11 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		const strongHint = /\.(docx?|pdf|xlsx?|pptx?)(?:\b|$)/i;
 		const weakHint = /(附件|下载)/i;
 		const candidates = [];
-		for (const el of document.querySelectorAll('body *')) {
+		const roots = [document];
+		for (const frame of document.querySelectorAll('iframe')) {
+			try { if (frame.contentDocument) roots.push(frame.contentDocument); } catch (_) {}
+		}
+		for (const root of roots) for (const el of root.querySelectorAll('body *')) {
 			const text = (el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '').trim();
 			if (!text || text.length > 200 || blocked.test(text)) continue;
 			const attrs = [el.getAttribute('href'), el.getAttribute('data-url'), el.getAttribute('data-download-url'), el.getAttribute('data-file-url'), el.className].filter(v => typeof v === 'string').join(' ');
@@ -1244,7 +1248,11 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	openWatcher := page.Timeout(8 * time.Second)
 	waitOpen := openWatcher.WaitOpen()
 	openedResult, openedErr := page.Eval(`async () => {
-		const el = document.querySelector('[data-xhs-attachment-candidate="1"]');
+		const roots = [document];
+		for (const frame of document.querySelectorAll('iframe')) {
+			try { if (frame.contentDocument) roots.push(frame.contentDocument); } catch (_) {}
+		}
+		const el = roots.map(root => root.querySelector('[data-xhs-attachment-candidate="1"]')).find(Boolean);
 		if (!el) return '';
 		const direct = [el.href, el.getAttribute('href'), el.getAttribute('data-url'),
 			el.getAttribute('data-download-url'), el.getAttribute('data-file-url')]
@@ -1359,7 +1367,11 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 	defer cancel()
 	waitDownload := page.Browser().Context(waitCtx).WaitDownload(dir)
 	clicked := page.MustEval(`() => {
-		const el = document.querySelector('[data-xhs-attachment-candidate="1"]');
+		const roots = [document];
+		for (const frame of document.querySelectorAll('iframe')) {
+			try { if (frame.contentDocument) roots.push(frame.contentDocument); } catch (_) {}
+		}
+		const el = roots.map(root => root.querySelector('[data-xhs-attachment-candidate="1"]')).find(Boolean);
 		if (!el) return false;
 		el.click();
 		return true;
