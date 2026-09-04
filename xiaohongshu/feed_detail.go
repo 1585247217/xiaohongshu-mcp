@@ -1117,16 +1117,43 @@ func captureAttachmentDownload(page *rod.Page) (*FeedAttachment, error) {
 		if (direct) return new URL(direct, location.href).href;
 		const before = location.href;
 		const opened = [];
+		const responseURLs = [];
+		const recordResponse = (url, body) => {
+			const text = String(body || '');
+			if (!/(docx?|pdf|xlsx?|pptx?|download|attachment|file)/i.test(url + ' ' + text)) return;
+			for (const value of text.match(/https?:\\/\\/[^\\s"'<>\\\\]+/g) || []) responseURLs.push(value);
+		};
 		const originalOpen = window.open;
+		const originalFetch = window.fetch;
+		const originalXHROpen = XMLHttpRequest.prototype.open;
+		const originalXHRSend = XMLHttpRequest.prototype.send;
 		window.open = function(url, ...args) {
 			if (typeof url === 'string') opened.push(url);
 			return originalOpen.call(this, url, ...args);
 		};
+		window.fetch = async function(...args) {
+			const response = await originalFetch.apply(this, args);
+			try { recordResponse(response.url, await response.clone().text()); } catch (_) {}
+			return response;
+		};
+		XMLHttpRequest.prototype.open = function(method, url, ...args) {
+			this.__xhsAttachmentURL = url;
+			return originalXHROpen.call(this, method, url, ...args);
+		};
+		XMLHttpRequest.prototype.send = function(...args) {
+			this.addEventListener('load', () => { try { recordResponse(this.responseURL || this.__xhsAttachmentURL, this.responseText); } catch (_) {} });
+			return originalXHRSend.apply(this, args);
+		};
 		try { el.click(); } catch (_) {}
-		await new Promise(resolve => setTimeout(resolve, 1200));
+		await new Promise(resolve => setTimeout(resolve, 2500));
 		window.open = originalOpen;
+		window.fetch = originalFetch;
+		XMLHttpRequest.prototype.open = originalXHROpen;
+		XMLHttpRequest.prototype.send = originalXHRSend;
 		const next = opened.find(value => /^https?:/i.test(value));
 		if (next) return new URL(next, before).href;
+		const responseURL = responseURLs.find(value => /(?:docx?|pdf|xlsx?|pptx?|download|attachment|file)/i.test(value));
+		if (responseURL) return new URL(responseURL, before).href;
 		const resource = performance.getEntriesByType('resource')
 			.map(item => item.name)
 			.reverse()
