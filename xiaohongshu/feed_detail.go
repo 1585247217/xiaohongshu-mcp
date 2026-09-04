@@ -22,6 +22,7 @@ import (
 
 var attachmentURLPattern = regexp.MustCompile(`https?://[^\s"'<>\\]+`)
 var attachmentHintPattern = regexp.MustCompile(`(?i)(?:\.docx?(?:[?#]|$)|\.pdf(?:[?#]|$)|\.xlsx?(?:[?#]|$)|\.pptx?(?:[?#]|$)|attachment|download|file)`)
+var directAttachmentURLPattern = regexp.MustCompile(`(?i)(?:\\.(?:docx?|pdf|xlsx?|pptx?)(?:[?#]|$)|[?&](?:download|attachment|file_url|download_url)=)`)
 var documentNamePattern = regexp.MustCompile(`(?i)\.(?:docx?|pdf|xlsx?|pptx?)`)
 
 // captureAttachmentNetworkURL observes Chrome network responses while the
