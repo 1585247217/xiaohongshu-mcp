@@ -53,7 +53,7 @@ public final class AgentService extends Service {
     @SuppressLint({"SetJavaScriptEnabled","AddJavascriptInterface"}) private void configureBridge() {
         bridge=new WebView(getApplicationContext());
         bridge.getSettings().setJavaScriptEnabled(true);
-        bridge.addJavascriptInterface(new Object {
+        bridge.addJavascriptInterface(new Object() {
             @JavascriptInterface public void onMessage(String raw) { ui.post(()->handleMessage(raw)); }
         },"NativeAgent");
         connectBridge();
