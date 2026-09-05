@@ -70,7 +70,7 @@ public final class AgentService extends Service {
             String url=SOCKET;
             String html="<script>window.agentSocket=new WebSocket("+JSONObject.quote(url)+");"+
                 "agentSocket.onopen=()=>agentSocket.send(JSON.stringify({type:'auth',token:"+JSONObject.quote(token)+"}));"+
-                "agentSocket.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='auth_ok')NativeAgent.onSocketState('已连接');else NativeAgent.onMessage(e.data)}catch(x){NativeAgent.onSocketState('消息解析失败')}};"+
+                "agentSocket.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='auth_ok')NativeAgent.onSocketState('已连接');else{agentSocket.send(JSON.stringify({type:'event',stage:'JS 已收到服务器任务'}));NativeAgent.onMessage(e.data)}}catch(x){NativeAgent.onSocketState('消息解析失败')}};"+
                 "agentSocket.onerror=()=>NativeAgent.onSocketState('连接失败');"+
                 "agentSocket.onclose=()=>NativeAgent.onSocketClosed();</script>";
             bridge.loadDataWithBaseURL("https://xiaohongshu-mcp-read.onrender.com",html,"text/html","UTF-8",null);

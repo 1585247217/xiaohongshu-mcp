@@ -74,8 +74,10 @@ func (h *mobileAgentHub) request(ctx context.Context, kind string, payload any) 
 	h.mu.Lock(); h.pending[id] = ch; h.mu.Unlock()
 	defer func() { h.mu.Lock(); delete(h.pending, id); h.mu.Unlock() }()
 	command := map[string]any{"type":"command","id":id,"kind":kind,"payload":payload}
+	wire, marshalErr := json.Marshal(command)
+	if marshalErr != nil { return nil, marshalErr }
 	h.sendMu.Lock()
-	err = websocket.JSON.Send(conn, command)
+	err = websocket.Message.Send(conn, string(wire))
 	h.sendMu.Unlock()
 	if err != nil { h.detach(conn); return nil, fmt.Errorf("PHONE_OFFLINE") }
 	timer := time.NewTimer(24 * time.Second); defer timer.Stop()
