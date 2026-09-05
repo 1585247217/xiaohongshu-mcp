@@ -574,6 +574,15 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		withPanicRecovery("research_xhs_link", researchXHSLink),
 	)
 
+	// 工具 20: 请求已在线的手机代理读取私密 tab 或附件
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name: "read_mobile_private", Description: "请求已在线的手机代理读取自己的小红书收藏、点赞或附件。只读；手机代理不在线时任务会保留短暂时间。",
+			Annotations: &mcp.ToolAnnotations{Title: "Read Through Mobile Agent", ReadOnlyHint: true},
+		},
+		withPanicRecovery("read_mobile_private", readMobilePrivate),
+	)
+
 	// 工具 20: 安全读取帖子里发现的公开附件
 	mcp.AddTool(server,
 		&mcp.Tool{
@@ -584,7 +593,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		withPanicRecovery("read_public_attachment", readPublicAttachment),
 	)
 
-	logrus.Infof("Registered %d MCP tools", 21)
+	logrus.Infof("Registered %d MCP tools", 22)
 }
 
 // convertToMCPResult 将自定义的 MCPToolResult 转换为官方 SDK 的格式
