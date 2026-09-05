@@ -54,7 +54,7 @@ public final class AgentService extends Service {
         bridge=new WebView(getApplicationContext());
         bridge.getSettings().setJavaScriptEnabled(true);
         bridge.addJavascriptInterface(new Object() {
-            @JavascriptInterface public void onMessage(String raw) { ui.post(()->handleMessage(raw)); }
+            @JavascriptInterface public void onMessage(String raw) { ui.post(()->handleMessage(raw)); }\n            @JavascriptInterface public void onSocketClosed() { ui.postDelayed(AgentService.this::connectBridge,5000); }
         },"NativeAgent");
         connectBridge();
     }
@@ -62,7 +62,7 @@ public final class AgentService extends Service {
     private void connectBridge() {
         if(stopped || token.isEmpty()) return;
         try {
-            String url=SOCKET+"?agent_token="+URLEncoder.encode(token,"UTF-8");
+            String url=SOCKET;
             String html="<script>window.agentSocket=new WebSocket("+JSONObject.quote(url)+");"+
                 "agentSocket.onmessage=e=>NativeAgent.onMessage(e.data);"+
                 "agentSocket.onclose=()=>setTimeout(()=>location.reload(),5000);</script>";
