@@ -5,6 +5,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Build;
+import android.Manifest;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -21,6 +23,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); setContentView(R.layout.activity_main);
+        if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
         status=findViewById(R.id.status); webView=findViewById(R.id.webview); configureWebView();
         ((Button)findViewById(R.id.login_button)).setOnClickListener(v->openLogin());
         ((Button)findViewById(R.id.check_button)).setOnClickListener(v->checkSession());
