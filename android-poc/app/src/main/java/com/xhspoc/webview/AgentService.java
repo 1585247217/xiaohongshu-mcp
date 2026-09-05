@@ -41,7 +41,9 @@ public final class AgentService extends Service {
     @SuppressLint("SetJavaScriptEnabled") private void configureReader() {
         reader=new WebView(getApplicationContext());
         CookieManager.getInstance().setAcceptCookie(true);
-        reader.getSettings().setJavaScriptEnabled(true); reader.getSettings().setDomStorageEnabled(true);
+        reader.getSettings().setJavaScriptEnabled(true); reader.getSettings().setDomStorageEnabled(true); reader.getSettings().setDatabaseEnabled(true);
+        reader.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+        CookieManager.getInstance().setAcceptThirdPartyCookies(reader,true);
         reader.setWebViewClient(new WebViewClient());
         reader.setDownloadListener(new DownloadListener() {
             @Override public void onDownloadStart(String url,String agent,String disposition,String mime,long size) {
@@ -92,19 +94,38 @@ public final class AgentService extends Service {
     }
 
     private void readFavorites(String id) {
-        sendEvent("正在打开收藏入口");
-        ui.postDelayed(() -> { if(id.equals(activeJob)) sendResult(id,null,"手机 WebView 读取收藏超时",null); },20000);
-        reader.loadUrl("https://www.xiaohongshu.com/explore");
-        ui.postDelayed(() -> { sendEvent("正在进入个人主页"); reader.evaluateJavascript("(() => {const a=[...document.querySelectorAll('a[href*=\\'/user/profile/\\']')][0];if(a){a.click();return true;}return false;})()", ignored ->
-            ui.postDelayed(() -> reader.evaluateJavascript("(() => {const n=[...document.querySelectorAll('*')].find(e=>(e.innerText||'').trim()==='收藏');if(n)n.click();return true;})()", ignored2 ->
-                ui.postDelayed(() -> reader.evaluateJavascript("(() => JSON.stringify({url:location.href,text:(document.body?.innerText||'').slice(0,12000)}))()", value -> {
-                    try {
-                        Object decoded=new JSONTokener(value).nextValue();
-                        if(decoded instanceof String) decoded=new JSONTokener((String)decoded).nextValue();
-                        if(decoded instanceof JSONObject) sendResult(id,(JSONObject)decoded,"",null);
-                        else sendResult(id,null,"收藏页面返回格式异常",null);
-                    } catch(Exception e) { sendResult(id,null,"无法读取收藏页面",null); }
-                }),3000)),3000)); },3000);
+        final String requested="https://www.xiaohongshu.com/explore";
+        sendEvent("LOAD_TARGET");
+        ui.postDelayed(() -> { if(id.equals(activeJob)) sendResult(id,null,"FAVORITES_TIMEOUT",null); },22000);
+        reader.loadUrl(requested);
+        ui.postDelayed(() -> {
+            sendEvent("CHECK_SESSION");
+            String findProfile="(() => {const links=[...document.querySelectorAll('a[href*=\\'/user/profile/\\']')];"+
+                "const a=links.find(x=>!x.closest('section.note-item')&&(x.closest('nav')||x.closest('header')||x.closest('[class*=side]')||/我|主页/.test(x.innerText||'')))||links[links.length-1];"+
+                "return JSON.stringify({requested_url:"+JSONObject.quote(requested)+",final_url:location.href,title:document.title,cookie_present:document.cookie.length>0,cookie_names:[...new Set(document.cookie.split(';').map(x=>x.trim().split('=')[0]).filter(Boolean))].slice(0,12),profile_url:a?a.href:'',preview:(document.body?.innerText||'').slice(0,300)});})()";
+            reader.evaluateJavascript(findProfile,value -> {
+                try {
+                    Object decoded=new JSONTokener(value).nextValue();
+                    if(decoded instanceof String) decoded=new JSONTokener((String)decoded).nextValue();
+                    JSONObject meta=(JSONObject)decoded;
+                    String profile=meta.optString("profile_url");
+                    if(profile.isEmpty()){ meta.put("state",meta.optBoolean("cookie_present")?"WRONG_PAGE":"LOGIN_REQUIRED"); sendResult(id,meta,"",null); return; }
+                    sendEvent("LOAD_PROFILE");
+                    reader.loadUrl(profile);
+                    ui.postDelayed(() -> reader.evaluateJavascript("(() => {const n=[...document.querySelectorAll('button,a,div')].find(e=>(e.innerText||'').trim()==='收藏');if(n){n.click();return true;}return false;})()",clicked -> {
+                        sendEvent("LOAD_FAVORITES");
+                        ui.postDelayed(() -> {
+                            String extract="(() => {const cards=[...document.querySelectorAll('section.note-item,[class*=note-item]')].slice(0,3).map(n=>{const a=n.querySelector('a[href]');const t=n.querySelector('[class*=title]');return {title:(t?.innerText||n.innerText||'').trim().split('\\n')[0],url:a?a.href:''}});"+
+                                "return JSON.stringify({state:cards.length?'FAVORITES_OK':'PROFILE_OK_NO_ITEMS',requested_url:"+JSONObject.quote(requested)+",final_url:location.href,title:document.title,cookie_present:document.cookie.length>0,cookie_names:[...new Set(document.cookie.split(';').map(x=>x.trim().split('=')[0]).filter(Boolean))].slice(0,12),preview:(document.body?.innerText||'').slice(0,300),favorites:cards});})()";
+                            reader.evaluateJavascript(extract,out -> {
+                                try { Object d=new JSONTokener(out).nextValue(); if(d instanceof String)d=new JSONTokener((String)d).nextValue(); sendResult(id,(JSONObject)d,"",null); }
+                                catch(Exception e){ sendResult(id,null,"FAVORITES_PARSE_ERROR",null); }
+                            });
+                        },4000);
+                    }),5000);
+                } catch(Exception e){ sendResult(id,null,"SESSION_DIAGNOSTIC_ERROR",null); }
+            });
+        },6000);
     }
 
     private void readAttachment(String id,String url) {
