@@ -564,6 +564,16 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 	withPanicRecovery("read_xhs_share_link", readXHSShareLink),
 	)
 
+	// 工具 20: 从单条链接继续研究作者与相近主题
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "research_xhs_link",
+			Description: "从一条小红书分享链接读取笔记（文字、图片、互动和首屏评论），并默认读取作者公开主页笔记；可选搜索最多三个相近主题。只读，不会点赞、收藏、评论或关注。需要服务端小红书会话可用。",
+			Annotations: &mcp.ToolAnnotations{Title: "Research XHS Link", ReadOnlyHint: true},
+		},
+		withPanicRecovery("research_xhs_link", researchXHSLink),
+	)
+
 	// 工具 20: 安全读取帖子里发现的公开附件
 	mcp.AddTool(server,
 		&mcp.Tool{
@@ -574,7 +584,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		withPanicRecovery("read_public_attachment", readPublicAttachment),
 	)
 
-	logrus.Infof("Registered %d MCP tools", 20)
+	logrus.Infof("Registered %d MCP tools", 21)
 }
 
 // convertToMCPResult 将自定义的 MCPToolResult 转换为官方 SDK 的格式
