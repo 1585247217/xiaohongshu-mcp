@@ -115,7 +115,15 @@ func readMobilePrivate(ctx context.Context, _ *mcp.CallToolRequest, args ReadMob
 			var state, result, jobErr string
 			err := store.db.QueryRowContext(context.Background(), `SELECT state, COALESCE(result::text,''), COALESCE(error,'') FROM xhs_mobile_agent_job WHERE id=$1`, id).Scan(&state,&result,&jobErr)
 			if err != nil { continue }
-			if state == "done" { return &mcp.CallToolResult{Content:[]mcp.Content{&mcp.TextContent{Text:result}}}, nil, nil }
+			if state == "done" {
+				if kind == "attachment" {
+					var attachment struct { DownloadURL string `json:"download_url"` }
+					if json.Unmarshal([]byte(result), &attachment) == nil && attachment.DownloadURL != "" {
+						return readPublicAttachment(ctx, nil, ReadPublicAttachmentArgs{URL: attachment.DownloadURL})
+					}
+				}
+				return &mcp.CallToolResult{Content:[]mcp.Content{&mcp.TextContent{Text:result}}}, nil, nil
+			}
 			if state == "failed" { return &mcp.CallToolResult{IsError:true,Content:[]mcp.Content{&mcp.TextContent{Text:"手机代理读取失败："+jobErr}}}, nil, nil }
 		}
 	}
