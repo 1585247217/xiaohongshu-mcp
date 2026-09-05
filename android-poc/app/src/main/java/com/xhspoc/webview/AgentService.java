@@ -94,7 +94,7 @@ public final class AgentService extends Service {
 
     private void readProfile(String id, String tab) {
         web.loadUrl("https://www.xiaohongshu.com/explore");
-        ui.postDelayed(() -> web.evaluateJavascript("(() => { const a=[...document.querySelectorAll('a[href*="/user/profile/"]')][0]; if(a){a.click();return true;} const n=[...document.querySelectorAll('*')].find(e=>['我','我的'].includes((e.innerText||'').trim())); if(n){n.click();return true;} return false; })()", ignored ->
+        ui.postDelayed(() -> web.evaluateJavascript("(() => { const a=[...document.querySelectorAll(\"a[href*='/user/profile/']\")][0]; if(a){a.click();return true;} const n=[...document.querySelectorAll('*')].find(e=>['我','我的'].includes((e.innerText||'').trim())); if(n){n.click();return true;} return false; })()", ignored ->
             ui.postDelayed(() -> web.evaluateJavascript("(() => { const n=[...document.querySelectorAll('*')].find(e=>(e.innerText||'').trim()==='" + ("liked".equals(tab) ? "点赞" : "收藏") + "'); if(n) n.click(); return true; })()", ignored2 ->
                 ui.postDelayed(() -> web.evaluateJavascript("(() => JSON.stringify({url:location.href,text:(document.body?.innerText||'').slice(0,12000)}))()", value -> {
                     try { finish(id, (JSONObject) new JSONTokener(value).nextValue(), "", null); }
