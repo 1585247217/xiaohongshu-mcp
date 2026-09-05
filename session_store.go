@@ -51,6 +51,11 @@ func initMobileSessionStore() error {
         payload BYTEA NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`); err != nil { db.Close(); return err }
+    if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS xhs_mobile_agent_job (
+        id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload JSONB NOT NULL,
+        state TEXT NOT NULL, result JSONB, error TEXT,
+        created_at TIMESTAMPTZ NOT NULL, started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ
+    )`); err != nil { db.Close(); return err }
     mobileSessions.Lock()
     mobileSessions.store = &encryptedSessionStore{db: db, gcm: gcm}
     mobileSessions.Unlock()
