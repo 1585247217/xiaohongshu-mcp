@@ -87,7 +87,11 @@ func (h *mobileAgentHub) request(ctx context.Context, kind string, payload any) 
 // The sole credential is checked during the opening handshake; ChatGPT never
 // receives it, and no unauthenticated control endpoint exists.
 func (s *AppServer) mobileAgentWebSocket(c *gin.Context) {
-	token := c.Query("agent_token")\n\tif token == "" {\n\t\tparts := strings.Split(c.GetHeader("Sec-WebSocket-Protocol"), ",")\n\t\tif len(parts) > 1 { token = strings.TrimSpace(parts[len(parts)-1]) }\n\t}
+	token := c.Query("agent_token")
+	if token == "" {
+		parts := strings.Split(c.GetHeader("Sec-WebSocket-Protocol"), ",")
+		if len(parts) > 1 { token = strings.TrimSpace(parts[len(parts)-1]) }
+	}
 	if s.authToken == "" || subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) != 1 {
 		c.Status(http.StatusUnauthorized); return
 	}
