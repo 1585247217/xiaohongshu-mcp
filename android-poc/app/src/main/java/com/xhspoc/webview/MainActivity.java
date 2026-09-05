@@ -53,13 +53,19 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle(title).setView(scroll).setPositiveButton("知道了",null).show();
     }
     private void askStartAgent(){
+        String saved=getSharedPreferences("agent",MODE_PRIVATE).getString("token","");
+        if(!saved.isEmpty()){ startAgent(); return; }
         EditText input=new EditText(this); input.setHint("Render 的 AUTH_TOKEN"); input.setSingleLine(true);
-        new AlertDialog.Builder(this).setTitle("启动后台读取代理").setMessage("会显示常驻通知；它只执行收藏、点赞和附件的读取请求。")
+        new AlertDialog.Builder(this).setTitle("首次启动读取代理").setMessage("AUTH_TOKEN 只保存在手机本地，以后启动不再询问。")
             .setView(input).setNegativeButton("取消",null).setPositiveButton("启动",(d,w)->{
-                String token=input.getText().toString().trim(); if(token.isEmpty()){status.setText("需要 AUTH_TOKEN。");return;}
-                getSharedPreferences("agent",MODE_PRIVATE).edit().putString("token",token).apply();
-                startForegroundService(new Intent(this,AgentService.class)); status.setText("读取代理已启动，可离开本 App。");
+                String token=input.getText().toString().trim(); if(token.isEmpty()){showResult("启动失败","需要 AUTH_TOKEN。");return;}
+                getSharedPreferences("agent",MODE_PRIVATE).edit().putString("token",token).apply(); startAgent();
             }).show();
+    }
+    private void startAgent(){
+        getSharedPreferences("agent",MODE_PRIVATE).edit().putString("connection_state","正在连接").apply();
+        startForegroundService(new Intent(this,AgentService.class)); status.setText("读取代理正在连接，可查看通知栏状态。");
+        new android.os.Handler().postDelayed(()->showResult("读取代理",getSharedPreferences("agent",MODE_PRIVATE).getString("connection_state","正在连接")),3500);
     }
     @Override protected void onPause(){CookieManager.getInstance().flush();super.onPause();}
 }
