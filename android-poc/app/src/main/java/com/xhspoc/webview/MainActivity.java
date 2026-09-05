@@ -14,6 +14,7 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.ScrollView;
 
 public class MainActivity extends Activity {
     private static final String LOGIN_URL = "https://www.xiaohongshu.com/explore";
@@ -39,7 +40,18 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient(){ @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r){String s=r.getUrl().getScheme();return !("http".equals(s)||"https".equals(s));} });
     }
     private void openLogin(){status.setText("请在页面内完成登录。");webView.loadUrl(LOGIN_URL);}
-    private void checkSession(){CookieManager.getInstance().flush();String c=CookieManager.getInstance().getCookie(COOKIE_URL);status.setText(c!=null&&!c.isEmpty()?"发现会话 Cookie。":"没有发现会话，请先登录。");}
+    private void checkSession(){
+        CookieManager.getInstance().flush();
+        String c=CookieManager.getInstance().getCookie(COOKIE_URL);
+        String message=c!=null&&!c.isEmpty()?"已发现登录会话 Cookie。":"没有发现会话，请先登录。";
+        status.setText("会话已检查");
+        showResult("会话检查",message);
+    }
+    private void showResult(String title,String message){
+        TextView text=new TextView(this); text.setText(message); text.setTextSize(16); text.setPadding(40,28,40,28); text.setTextIsSelectable(true);
+        ScrollView scroll=new ScrollView(this); scroll.addView(text);
+        new AlertDialog.Builder(this).setTitle(title).setView(scroll).setPositiveButton("知道了",null).show();
+    }
     private void askStartAgent(){
         EditText input=new EditText(this); input.setHint("Render 的 AUTH_TOKEN"); input.setSingleLine(true);
         new AlertDialog.Builder(this).setTitle("启动后台读取代理").setMessage("会显示常驻通知；它只执行收藏、点赞和附件的读取请求。")
