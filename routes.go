@@ -31,6 +31,8 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
     api := protected.Group("/api/v1")
     {
         api.POST("/mobile/session", appServer.syncMobileSessionHandler)
+        api.GET("/mobile/agent/jobs/next", mobileAgentNextJobHandler)
+        api.POST("/mobile/agent/jobs/:id/result", mobileAgentResultHandler)
         api.GET("/login/status", appServer.checkLoginStatusHandler)
         api.GET("/login/qrcode", appServer.getLoginQrcodeHandler)
         api.DELETE("/login/cookies", appServer.deleteCookiesHandler)
