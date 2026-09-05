@@ -54,7 +54,8 @@ public final class AgentService extends Service {
         bridge=new WebView(getApplicationContext());
         bridge.getSettings().setJavaScriptEnabled(true);
         bridge.addJavascriptInterface(new Object() {
-            @JavascriptInterface public void onMessage(String raw) { ui.post(()->handleMessage(raw)); }\n            @JavascriptInterface public void onSocketClosed() { ui.postDelayed(AgentService.this::connectBridge,5000); }
+            @JavascriptInterface public void onMessage(String raw) { ui.post(()->handleMessage(raw)); }
+            @JavascriptInterface public void onSocketClosed() { ui.postDelayed(AgentService.this::connectBridge,5000); }
         },"NativeAgent");
         connectBridge();
     }
