@@ -63,9 +63,9 @@ public final class AgentService extends Service {
         if(stopped || token.isEmpty()) return;
         try {
             String url=SOCKET;
-            String html="<script>window.agentSocket=new WebSocket("+JSONObject.quote(url)+");"+
+            String html="<script>window.agentSocket=new WebSocket("+JSONObject.quote(url)+",[\"xhs-agent\","+JSONObject.quote(token)+"]);"+
                 "agentSocket.onmessage=e=>NativeAgent.onMessage(e.data);"+
-                "agentSocket.onclose=()=>setTimeout(()=>location.reload(),5000);</script>";
+                "agentSocket.onclose=()=>NativeAgent.onSocketClosed();</script>";
             bridge.loadDataWithBaseURL("https://xiaohongshu-mcp-read.onrender.com",html,"text/html","UTF-8",null);
         } catch(Exception ignored) { ui.postDelayed(this::connectBridge,5000); }
     }
