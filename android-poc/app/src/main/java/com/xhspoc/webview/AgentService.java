@@ -88,8 +88,12 @@ public final class AgentService extends Service {
         ui.postDelayed(() -> reader.evaluateJavascript("(() => {const a=[...document.querySelectorAll('a[href*=\\'/user/profile/\\']')][0];if(a){a.click();return true;}return false;})()", ignored ->
             ui.postDelayed(() -> reader.evaluateJavascript("(() => {const n=[...document.querySelectorAll('*')].find(e=>(e.innerText||'').trim()==='收藏');if(n)n.click();return true;})()", ignored2 ->
                 ui.postDelayed(() -> reader.evaluateJavascript("(() => JSON.stringify({url:location.href,text:(document.body?.innerText||'').slice(0,12000)}))()", value -> {
-                    try { sendResult(id,(JSONObject)new JSONTokener(value).nextValue(),"",null); }
-                    catch(Exception e) { sendResult(id,null,"无法读取收藏页面",null); }
+                    try {
+                        Object decoded=new JSONTokener(value).nextValue();
+                        if(decoded instanceof String) decoded=new JSONTokener((String)decoded).nextValue();
+                        if(decoded instanceof JSONObject) sendResult(id,(JSONObject)decoded,"",null);
+                        else sendResult(id,null,"收藏页面返回格式异常",null);
+                    } catch(Exception e) { sendResult(id,null,"无法读取收藏页面",null); }
                 }),3000)),3000)),3000);
     }
 
