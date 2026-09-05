@@ -11,7 +11,10 @@ import (
     "github.com/xpzouying/xiaohongshu-mcp/cookies"
 )
 
-var version = "dev"
+// Bump this whenever MCP's externally visible tool schema changes.  Chat
+// clients may cache a connector's tool catalog by the server version, so a
+// stable "dev" value can leave an already-reconnected client on stale tools.
+var version = "2026.09.05-mobile-agent-rpc.1"
 
 func main() {
     var ( headless bool; port string; token string )
