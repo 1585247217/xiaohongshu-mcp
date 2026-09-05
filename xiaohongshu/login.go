@@ -74,8 +74,18 @@ func (a *LoginAction) CurrentUser(ctx context.Context) (*CurrentUser, error) {
 	res, err := pp.Eval(`() => {
 		const u = window.__INITIAL_STATE__ && window.__INITIAL_STATE__.user;
 		const info = u && u.userInfo && u.userInfo.value !== undefined ? u.userInfo.value : (u && u.userInfo);
-		if (!info || info.guest) return "";
-		return JSON.stringify({nickname: info.nickname, userId: info.userId || info.user_id});
+		if (info && !info.guest && (info.userId || info.user_id)) {
+			return JSON.stringify({nickname: info.nickname, userId: info.userId || info.user_id});
+		}
+		// The explore page occasionally omits userInfo even though the account
+		// control has already rendered. Its profile link still contains the
+		// canonical ID, which lets callers avoid a brittle sidebar click.
+		const link = [...document.querySelectorAll('a[href*="/user/profile/"]')]
+			.map(a => a.getAttribute('href') || '')
+			.find(Boolean);
+		const match = link && link.match(/\\/user\\/profile\\/([^?/#]+)/);
+		if (!match) return "";
+		return JSON.stringify({nickname: "", userId: match[1]});
 	}`)
 	if err != nil {
 		return nil, errors.Wrap(err, "read current user state failed")
