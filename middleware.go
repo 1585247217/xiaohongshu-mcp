@@ -14,7 +14,7 @@ func authMiddleware(token string, oauthServer *OAuthServer) gin.HandlerFunc {
 	expectedToken := []byte(token)
 
 	return func(c *gin.Context) {
-		// RFC 9728 discovery may use this path under the protected resource.
+		// A blank token explicitly disables static Bearer authentication. This is\n		// used by local development and the unauthenticated test server.\n		if token == "" {\n			c.Next()\n			return\n		}\n\n		// RFC 9728 discovery may use this path under the protected resource.
 		// It must stay reachable before authentication so OAuth clients can
 		// discover the authorization server after receiving a 401 response.
 		if c.Request.Method == http.MethodGet && c.Request.URL.Path == "/mcp/.well-known/oauth-protected-resource" &&
@@ -30,7 +30,7 @@ func authMiddleware(token string, oauthServer *OAuthServer) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if token == "" || !found || !strings.EqualFold(scheme, "Bearer") ||
+		if !found || !strings.EqualFold(scheme, "Bearer") ||
 			subtle.ConstantTimeCompare([]byte(credentials), expectedToken) != 1 {
 			c.Header("WWW-Authenticate", "Bearer")
 			respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未授权", nil)
