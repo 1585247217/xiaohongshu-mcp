@@ -14,6 +14,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/ulikunitz/xz v0.5.15
 	github.com/xpzouying/headless_browser v0.4.0
+	golang.org/x/net v0.25.0
 	rsc.io/pdf v0.1.1
 )
 
@@ -51,7 +52,6 @@ require (
 	github.com/ysmood/leakless v0.9.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/crypto v0.23.0 // indirect
-	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.15.0 // indirect

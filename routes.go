@@ -21,6 +21,7 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
     router.GET("/oauth/authorize", appServer.oauthServer.authorize)
     router.POST("/oauth/authorize", appServer.oauthServer.authorize)
     router.POST("/oauth/token", appServer.oauthServer.token)
+    router.GET("/api/v1/mobile/agent/ws", appServer.mobileAgentWebSocket)
 
     mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server { return appServer.mcpServer },
         &mcp.StreamableHTTPOptions{JSONResponse: true, DisableLocalhostProtection: true, Stateless: true})
@@ -31,8 +32,6 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
     api := protected.Group("/api/v1")
     {
         api.POST("/mobile/session", appServer.syncMobileSessionHandler)
-        api.GET("/mobile/agent/jobs/next", mobileAgentNextJobHandler)
-        api.POST("/mobile/agent/jobs/:id/result", mobileAgentResultHandler)
         api.GET("/login/status", appServer.checkLoginStatusHandler)
         api.GET("/login/qrcode", appServer.getLoginQrcodeHandler)
         api.DELETE("/login/cookies", appServer.deleteCookiesHandler)

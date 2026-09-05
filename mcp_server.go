@@ -574,13 +574,22 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		withPanicRecovery("research_xhs_link", researchXHSLink),
 	)
 
-	// 工具 20: 请求已在线的手机代理读取私密 tab 或附件
+	// 工具 20: 查询手机代理连接状态
 	mcp.AddTool(server,
-		&mcp.Tool{
-			Name: "read_mobile_private", Description: "请求已在线的手机代理读取自己的小红书收藏、点赞或附件。只读；手机代理不在线时任务会保留短暂时间。",
-			Annotations: &mcp.ToolAnnotations{Title: "Read Through Mobile Agent", ReadOnlyHint: true},
-		},
-		withPanicRecovery("read_mobile_private", readMobilePrivate),
+		&mcp.Tool{Name:"phone_agent_status", Description:"查询已认证手机读取代理是否在线。", Annotations:&mcp.ToolAnnotations{Title:"Phone Agent Status", ReadOnlyHint:true}},
+		withPanicRecovery("phone_agent_status", phoneAgentStatus),
+	)
+
+	// 工具 21: 读取自己的收藏（由在线手机代理执行）
+	mcp.AddTool(server,
+		&mcp.Tool{Name:"get_my_favorites", Description:"通过已认证且在线的手机代理读取当前账号的收藏。代理离线时返回 PHONE_OFFLINE。", Annotations:&mcp.ToolAnnotations{Title:"Get My Favorites", ReadOnlyHint:true}},
+		withPanicRecovery("get_my_favorites", getMyFavorites),
+	)
+
+	// 工具 22: 读取小红书附件（由在线手机代理取得下载地址）
+	mcp.AddTool(server,
+		&mcp.Tool{Name:"read_attachment", Description:"通过已认证且在线的手机代理读取小红书附件页；代理离线时返回 PHONE_OFFLINE。", Annotations:&mcp.ToolAnnotations{Title:"Read Attachment", ReadOnlyHint:true}},
+		withPanicRecovery("read_attachment", readAttachmentFromPhone),
 	)
 
 	// 工具 20: 安全读取帖子里发现的公开附件
@@ -593,7 +602,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		withPanicRecovery("read_public_attachment", readPublicAttachment),
 	)
 
-	logrus.Infof("Registered %d MCP tools", 22)
+	logrus.Infof("Registered %d MCP tools", 23)
 }
 
 // convertToMCPResult 将自定义的 MCPToolResult 转换为官方 SDK 的格式
