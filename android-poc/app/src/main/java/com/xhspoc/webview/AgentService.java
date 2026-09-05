@@ -34,7 +34,7 @@ public final class AgentService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         token=getSharedPreferences("agent",MODE_PRIVATE).getString("token","");
-        createChannel(); startForeground(7,notification("小红书读取代理在线"));
+        createChannel(); startForeground(7,notification("正在连接 Render"));
         configureReader(); configureBridge();
     }
 
@@ -55,7 +55,11 @@ public final class AgentService extends Service {
         bridge.getSettings().setJavaScriptEnabled(true);
         bridge.addJavascriptInterface(new Object() {
             @JavascriptInterface public void onMessage(String raw) { ui.post(()->handleMessage(raw)); }
-            @JavascriptInterface public void onSocketClosed() { ui.postDelayed(AgentService.this::connectBridge,5000); }
+            @JavascriptInterface public void onSocketState(String state) { ui.post(()->setConnectionState(state)); }
+            @JavascriptInterface public void onSocketClosed() {
+                ui.post(()->setConnectionState("已断开，5 秒后重连"));
+                ui.postDelayed(AgentService.this::connectBridge,5000);
+            }
         },"NativeAgent");
         connectBridge();
     }
@@ -64,8 +68,10 @@ public final class AgentService extends Service {
         if(stopped || token.isEmpty()) return;
         try {
             String url=SOCKET;
-            String html="<script>window.agentSocket=new WebSocket("+JSONObject.quote(url)+",[\"xhs-agent\","+JSONObject.quote(token)+"]);"+
-                "agentSocket.onmessage=e=>NativeAgent.onMessage(e.data);"+
+            String html="<script>window.agentSocket=new WebSocket("+JSONObject.quote(url)+");"+
+                "agentSocket.onopen=()=>agentSocket.send(JSON.stringify({type:'auth',token:"+JSONObject.quote(token)+"}));"+
+                "agentSocket.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='auth_ok')NativeAgent.onSocketState('已连接');else NativeAgent.onMessage(e.data)}catch(x){NativeAgent.onSocketState('消息解析失败')}};"+
+                "agentSocket.onerror=()=>NativeAgent.onSocketState('连接失败');"+
                 "agentSocket.onclose=()=>NativeAgent.onSocketClosed();</script>";
             bridge.loadDataWithBaseURL("https://xiaohongshu-mcp-read.onrender.com",html,"text/html","UTF-8",null);
         } catch(Exception ignored) { ui.postDelayed(this::connectBridge,5000); }
@@ -115,6 +121,11 @@ public final class AgentService extends Service {
             bridge.evaluateJavascript("if(window.agentSocket&&agentSocket.readyState===1)agentSocket.send("+JSONObject.quote(packet.toString())+")",null);
         } catch(Exception ignored) { }
         activeJob=null;
+    }
+
+    private void setConnectionState(String state) {
+        getSharedPreferences("agent",MODE_PRIVATE).edit().putString("connection_state",state).apply();
+        getSystemService(NotificationManager.class).notify(7,notification(state));
     }
 
     private void createChannel() {
