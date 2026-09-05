@@ -21,6 +21,8 @@ type mobileAgentHub struct {
 	sendMu sync.Mutex
 	pending map[string]chan mobileAgentReply
 	connectedAt time.Time
+	lastEvent string
+	lastSeen time.Time
 }
 
 type mobileAgentReply struct {
@@ -48,6 +50,10 @@ func (h *mobileAgentHub) detach(conn *websocket.Conn) {
 	h.mu.Lock()
 	if h.conn == conn { h.conn = nil }
 	h.mu.Unlock()
+}
+
+func (h *mobileAgentHub) event(stage string) {
+	h.mu.Lock(); h.lastEvent = stage; h.lastSeen = time.Now(); h.mu.Unlock()
 }
 
 func (h *mobileAgentHub) deliver(id string, reply mobileAgentReply) {
@@ -107,8 +113,10 @@ func (s *AppServer) mobileAgentWebSocket(c *gin.Context) {
 				ID string `json:"id"`
 				Result json.RawMessage `json:"result"`
 				Error string `json:"error"`
+				Stage string `json:"stage"`
 			}
 			if err := websocket.JSON.Receive(conn, &message); err != nil { return }
+			if message.Type == "event" { liveMobileAgent.event(strings.TrimSpace(message.Stage)) }
 			if message.Type == "result" && message.ID != "" {
 				liveMobileAgent.deliver(message.ID, mobileAgentReply{Result:message.Result, Error:strings.TrimSpace(message.Error)})
 			}
@@ -118,7 +126,8 @@ func (s *AppServer) mobileAgentWebSocket(c *gin.Context) {
 
 func phoneAgentStatus(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 	state := "offline"; if liveMobileAgent.online() { state = "online" }
-	return &mcp.CallToolResult{Content:[]mcp.Content{&mcp.TextContent{Text:fmt.Sprintf(`{"status":%q}`, state)}}}, nil, nil
+	liveMobileAgent.mu.Lock(); event := liveMobileAgent.lastEvent; seen := liveMobileAgent.lastSeen; liveMobileAgent.mu.Unlock()
+	return &mcp.CallToolResult{Content:[]mcp.Content{&mcp.TextContent{Text:fmt.Sprintf(`{"status":%q,"last_event":%q,"last_seen":%q}`, state, event, seen.Format(time.RFC3339))}}}, nil, nil
 }
 
 func getMyFavorites(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
