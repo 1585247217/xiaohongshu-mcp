@@ -87,15 +87,19 @@ func (h *mobileAgentHub) request(ctx context.Context, kind string, payload any) 
 // The sole credential is checked during the opening handshake; ChatGPT never
 // receives it, and no unauthenticated control endpoint exists.
 func (s *AppServer) mobileAgentWebSocket(c *gin.Context) {
-	token := c.Query("agent_token")
-	if token == "" {
-		parts := strings.Split(c.GetHeader("Sec-WebSocket-Protocol"), ",")
-		if len(parts) > 1 { token = strings.TrimSpace(parts[len(parts)-1]) }
-	}
-	if s.authToken == "" || subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) != 1 {
-		c.Status(http.StatusUnauthorized); return
-	}
 	websocket.Handler(func(conn *websocket.Conn) {
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		var auth struct {
+			Type string `json:"type"`
+			Token string `json:"token"`
+		}
+		if err := websocket.JSON.Receive(conn, &auth); err != nil { return }
+		if auth.Type != "auth" || s.authToken == "" || subtle.ConstantTimeCompare([]byte(auth.Token), []byte(s.authToken)) != 1 {
+			_ = websocket.JSON.Send(conn, map[string]string{"type":"auth_error"})
+			return
+		}
+		_ = conn.SetDeadline(time.Time{})
+		if err := websocket.JSON.Send(conn, map[string]string{"type":"auth_ok"}); err != nil { return }
 		liveMobileAgent.attach(conn)
 		defer liveMobileAgent.detach(conn)
 		for {
