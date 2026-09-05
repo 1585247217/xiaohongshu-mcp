@@ -14,6 +14,13 @@ func authMiddleware(token string, oauthServer *OAuthServer) gin.HandlerFunc {
 	expectedToken := []byte(token)
 
 	return func(c *gin.Context) {
+		// A blank token explicitly disables static Bearer authentication. This is
+		// used by local development and the unauthenticated test server.
+		if token == "" {
+			c.Next()
+			return
+		}
+
 		// RFC 9728 discovery may use this path under the protected resource.
 		// It must stay reachable before authentication so OAuth clients can
 		// discover the authorization server after receiving a 401 response.
@@ -30,7 +37,7 @@ func authMiddleware(token string, oauthServer *OAuthServer) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if token == "" || !found || !strings.EqualFold(scheme, "Bearer") ||
+		if !found || !strings.EqualFold(scheme, "Bearer") ||
 			subtle.ConstantTimeCompare([]byte(credentials), expectedToken) != 1 {
 			c.Header("WWW-Authenticate", "Bearer")
 			respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "未授权", nil)
