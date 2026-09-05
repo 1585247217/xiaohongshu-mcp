@@ -28,5 +28,8 @@ func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
     if err != nil { return err }
     humanize.Delay(ctx, humanize.BeforeClick)
     if err := humanize.Click(profileLink); err != nil { return err }
-    return page.WaitLoad()
+    // XHS keeps long-lived requests open on profile pages. Waiting for the
+    // browser load event therefore turns a successful click into a timeout.
+    // The caller waits for the actual page state it needs instead.
+    return nil
 }
