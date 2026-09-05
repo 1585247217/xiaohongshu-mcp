@@ -75,8 +75,8 @@ func (h *mobileAgentHub) request(ctx context.Context, kind string, payload any) 
 	if err != nil { h.detach(conn); return nil, fmt.Errorf("PHONE_OFFLINE") }
 	timer := time.NewTimer(24 * time.Second); defer timer.Stop()
 	select {
-	case <-ctx.Done(): return nil, fmt.Errorf("PHONE_OFFLINE")
-	case <-timer.C: return nil, fmt.Errorf("PHONE_OFFLINE")
+	case <-ctx.Done(): return nil, fmt.Errorf("PHONE_TIMEOUT")
+	case <-timer.C: return nil, fmt.Errorf("PHONE_TIMEOUT")
 	case reply := <-ch:
 		if reply.Error != "" { return nil, fmt.Errorf("%s", reply.Error) }
 		return reply.Result, nil
