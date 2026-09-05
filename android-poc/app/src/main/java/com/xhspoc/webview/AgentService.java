@@ -55,6 +55,7 @@ public final class AgentService extends Service {
         bridge.getSettings().setJavaScriptEnabled(true);
         bridge.addJavascriptInterface(new Object() {
             @JavascriptInterface public void onMessage(String raw) { ui.post(()->handleMessage(raw)); }
+            @JavascriptInterface public void onSocketClosed() { ui.postDelayed(AgentService.this::connectBridge,5000); }
         },"NativeAgent");
         connectBridge();
     }
@@ -62,10 +63,10 @@ public final class AgentService extends Service {
     private void connectBridge() {
         if(stopped || token.isEmpty()) return;
         try {
-            String url=SOCKET+"?agent_token="+URLEncoder.encode(token,"UTF-8");
-            String html="<script>window.agentSocket=new WebSocket("+JSONObject.quote(url)+");"+
+            String url=SOCKET;
+            String html="<script>window.agentSocket=new WebSocket("+JSONObject.quote(url)+",[\"xhs-agent\","+JSONObject.quote(token)+"]);"+
                 "agentSocket.onmessage=e=>NativeAgent.onMessage(e.data);"+
-                "agentSocket.onclose=()=>setTimeout(()=>location.reload(),5000);</script>";
+                "agentSocket.onclose=()=>NativeAgent.onSocketClosed();</script>";
             bridge.loadDataWithBaseURL("https://xiaohongshu-mcp-read.onrender.com",html,"text/html","UTF-8",null);
         } catch(Exception ignored) { ui.postDelayed(this::connectBridge,5000); }
     }
