@@ -82,6 +82,7 @@ public final class AgentService extends Service {
             JSONObject command=new JSONObject(raw);
             if(!"command".equals(command.optString("type"))) return;
             activeJob=command.optString("id");
+            sendEvent("收到任务："+command.optString("kind"));
             JSONObject payload=command.optJSONObject("payload");
             if(payload==null) { sendResult(activeJob,null,"任务格式错误",null); return; }
             if("favorites".equals(command.optString("kind"))) readFavorites(activeJob);
@@ -91,8 +92,10 @@ public final class AgentService extends Service {
     }
 
     private void readFavorites(String id) {
+        sendEvent("正在打开收藏入口");
+        ui.postDelayed(() -> { if(id.equals(activeJob)) sendResult(id,null,"手机 WebView 读取收藏超时",null); },20000);
         reader.loadUrl("https://www.xiaohongshu.com/explore");
-        ui.postDelayed(() -> reader.evaluateJavascript("(() => {const a=[...document.querySelectorAll('a[href*=\\'/user/profile/\\']')][0];if(a){a.click();return true;}return false;})()", ignored ->
+        ui.postDelayed(() -> { sendEvent("正在进入个人主页"); reader.evaluateJavascript("(() => {const a=[...document.querySelectorAll('a[href*=\\'/user/profile/\\']')][0];if(a){a.click();return true;}return false;})()", ignored ->
             ui.postDelayed(() -> reader.evaluateJavascript("(() => {const n=[...document.querySelectorAll('*')].find(e=>(e.innerText||'').trim()==='收藏');if(n)n.click();return true;})()", ignored2 ->
                 ui.postDelayed(() -> reader.evaluateJavascript("(() => JSON.stringify({url:location.href,text:(document.body?.innerText||'').slice(0,12000)}))()", value -> {
                     try {
@@ -101,7 +104,7 @@ public final class AgentService extends Service {
                         if(decoded instanceof JSONObject) sendResult(id,(JSONObject)decoded,"",null);
                         else sendResult(id,null,"收藏页面返回格式异常",null);
                     } catch(Exception e) { sendResult(id,null,"无法读取收藏页面",null); }
-                }),3000)),3000)),3000);
+                }),3000)),3000)); },3000);
     }
 
     private void readAttachment(String id,String url) {
@@ -112,6 +115,14 @@ public final class AgentService extends Service {
         }),5000);
     }
 
+    private void sendEvent(String stage) {
+        setConnectionState(stage);
+        try {
+            JSONObject packet=new JSONObject(); packet.put("type","event"); packet.put("stage",stage);
+            bridge.evaluateJavascript("if(window.agentSocket&&agentSocket.readyState===1)agentSocket.send("+JSONObject.quote(packet.toString())+")",null);
+        } catch(Exception ignored) { }
+    }
+
     private void sendResult(String id,JSONObject result,String error,String downloadUrl) {
         if(id==null||id.isEmpty()) return;
         if(result==null) result=new JSONObject();
@@ -120,6 +131,7 @@ public final class AgentService extends Service {
             JSONObject packet=new JSONObject(); packet.put("type","result"); packet.put("id",id); packet.put("result",result); packet.put("error",error==null?"":error);
             bridge.evaluateJavascript("if(window.agentSocket&&agentSocket.readyState===1)agentSocket.send("+JSONObject.quote(packet.toString())+")",null);
         } catch(Exception ignored) { }
+        setConnectionState(error==null||error.isEmpty()?"任务已回传":error);
         activeJob=null;
     }
 
