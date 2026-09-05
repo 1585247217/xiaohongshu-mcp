@@ -680,6 +680,25 @@ func (s *XiaohongshuService) GetMyProfile(ctx context.Context, tab string) (*Use
 	var result *xiaohongshu.UserProfileResponse
 
 	err = withBrowserPage(func(page *rod.Page) error {
+		login := xiaohongshu.NewLogin(page)
+		loggedIn, loginErr := login.CheckLoginStatus(ctx)
+		if loginErr != nil {
+			return fmt.Errorf("检查登录态失败: %w", loginErr)
+		}
+		if !loggedIn {
+			return fmt.Errorf("当前未登录")
+		}
+		current, currentErr := login.CurrentUser(ctx)
+		if currentErr == nil && current.UserID != "" {
+			// Navigate directly instead of clicking the sidebar. Cloud Chromium
+			// commonly leaves that navigation waiting on a long-lived request.
+			action := xiaohongshu.NewUserProfileAction(page)
+			result, err = action.UserProfile(ctx, current.UserID, "", parsed)
+			return err
+		}
+
+		// Keep the old route as a compatibility fallback for page variants that
+		// do not expose the profile URL on the explore page.
 		action := xiaohongshu.NewUserProfileAction(page)
 		result, err = action.GetMyProfileViaSidebar(ctx, parsed)
 		return err
