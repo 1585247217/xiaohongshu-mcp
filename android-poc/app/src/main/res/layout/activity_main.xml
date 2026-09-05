@@ -1,4 +1,6 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+    <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="3" android:padding="8dp" android:text="先登录，再启动读取代理。" android:textSize="13sp" />
+    <WebView android:id="@+id/webview" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="6dp">
         <Button android:id="@+id/login_button" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="登录" />
         <Button android:id="@+id/check_button" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="检查" />
@@ -8,6 +10,4 @@
         <Button android:id="@+id/agent_button" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="启动读取代理" />
         <Button android:id="@+id/stop_agent_button" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="停止代理" />
     </LinearLayout>
-    <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="4" android:padding="8dp" android:text="先登录，再启动读取代理。" android:textSize="13sp" />
-    <WebView android:id="@+id/webview" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
 </LinearLayout>
