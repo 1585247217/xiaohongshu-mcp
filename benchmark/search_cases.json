@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {"id": "exact-project", "query": "Agent-Reach", "relevance_terms": ["agent-reach", "agent reach"]},
+    {"id": "proactive-ai-cn", "query": "AI 主动聊天 自己找话题", "relevance_terms": ["主动", "话题", "ai"]},
+    {"id": "proactive-ai-en", "query": "proactive AI companion curiosity", "relevance_terms": ["proactive", "companion", "curiosity"]},
+    {"id": "topic-pool", "query": "Topic Pool AI agent", "relevance_terms": ["topic", "agent"]},
+    {"id": "mobile-agent", "query": "手机 AI agent 后台运行", "relevance_terms": ["手机", "agent", "后台"]},
+    {"id": "xhs-reader", "query": "小红书 MCP 读取 评论", "relevance_terms": ["小红书", "mcp", "评论"]},
+    {"id": "fresh-ai-news", "query": "最近 AI agent 新产品", "relevance_terms": ["ai", "agent", "产品"]},
+    {"id": "niche-book", "query": "曹植 洛神赋 女性意识", "relevance_terms": ["曹植", "洛神赋", "女性"]},
+    {"id": "rain-reading", "query": "下雨天 适合读的书", "relevance_terms": ["下雨", "雨天", "书"]},
+    {"id": "low-signal", "query": "今天有什么值得认真聊的新东西", "relevance_terms": ["今天", "新", "讨论"]}
+  ]
+}
