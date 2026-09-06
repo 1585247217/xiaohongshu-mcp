@@ -111,7 +111,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	if err := page.Navigate(searchURL); err != nil {
 		return nil, fmt.Errorf("打开搜索页失败: %w", err)
 	}
-	if err := page.Wait(`() => window.__INITIAL_STATE__?.search?.feeds !== undefined`); err != nil {
+	if err := page.Wait(rod.Eval(`() => window.__INITIAL_STATE__?.search?.feeds !== undefined`)); err != nil {
 		return nil, fmt.Errorf("等待搜索结果失败: %w", err)
 	}
 	humanize.Delay(ctx, humanize.AfterNavigate)
