@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/headless_browser"
 	"github.com/xpzouying/xiaohongshu-mcp/browser"
 	"github.com/xpzouying/xiaohongshu-mcp/configs"
 	"github.com/xpzouying/xiaohongshu-mcp/cookies"
@@ -74,7 +73,7 @@ type PublishVideoRequest struct {
 	Products   []string `json:"products,omitempty"`    // 商品关键词列表，用于绑定带货商品
 }
 
-// PublishVideoResponse 发布视频响应
+// PublishVideoResponse 发布响应
 type PublishVideoResponse struct {
 	Title   string `json:"title"`
 	Content string `json:"content"`
@@ -90,11 +89,11 @@ type FeedsListResponse struct {
 
 // UserProfileResponse 用户主页响应
 type UserProfileResponse struct {
-	UserBasicInfo xiaohongshu.UserBasicInfo      `json:"userBasicInfo"`
-	Interactions  []xiaohongshu.UserInteractions `json:"interactions"`
-	Feeds         []xiaohongshu.Feed             `json:"feeds"`
-	Ordering          string `json:"ordering,omitempty"`
-	DuplicatesRemoved int    `json:"duplicatesRemoved,omitempty"`
+	UserBasicInfo      xiaohongshu.UserBasicInfo      `json:"userBasicInfo"`
+	Interactions       []xiaohongshu.UserInteractions `json:"interactions"`
+	Feeds              []xiaohongshu.Feed             `json:"feeds"`
+	Ordering           string                         `json:"ordering,omitempty"`
+	DuplicatesRemoved  int                            `json:"duplicatesRemoved,omitempty"`
 }
 
 // DeleteCookies 删除 cookies 文件，用于登录重置
@@ -477,11 +476,11 @@ func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken,
 		return nil, err
 	}
 	response := &UserProfileResponse{
-		UserBasicInfo: result.UserBasicInfo,
-		Interactions:  result.Interactions,
-		Feeds:         result.Feeds,
-		Ordering:          result.Ordering,
-		DuplicatesRemoved: result.DuplicatesRemoved,
+		UserBasicInfo:      result.UserBasicInfo,
+		Interactions:       result.Interactions,
+		Feeds:              result.Feeds,
+		Ordering:           result.Ordering,
+		DuplicatesRemoved:  result.DuplicatesRemoved,
 	}
 
 	return response, nil
@@ -637,11 +636,28 @@ func (s *XiaohongshuService) ReplyNotification(ctx context.Context, commentID, c
 	return xiaohongshu.NewNotificationAction(page).Reply(ctx, commentID, content)
 }
 
-func newBrowser() *headless_browser.Browser {
-	return browser.NewBrowser(configs.IsHeadless(),
+func newBrowser() (result *limitedBrowser) {
+	release := acquireBrowserSlot()
+	defer func() {
+		if r := recover(); r != nil {
+			release()
+			panic(r)
+		}
+	}()
+
+	b := browser.NewBrowser(configs.IsHeadless(),
 		browser.WithFingerprintSeed(configs.FingerprintSeed()),
 		browser.WithProxy(configs.Proxy()),
 	)
+	if b == nil {
+		release()
+		panic("browser.NewBrowser returned nil")
+	}
+
+	return &limitedBrowser{
+		Browser: b,
+		release: release,
+	}
 }
 
 func saveCookies(page *rod.Page) error {
