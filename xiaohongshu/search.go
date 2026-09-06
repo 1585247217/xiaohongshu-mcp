@@ -87,8 +87,10 @@ type SearchAction struct {
 	page *rod.Page
 }
 
+const searchPageTimeout = 35 * time.Second
+
 func NewSearchAction(page *rod.Page) *SearchAction {
-	pp := page.Timeout(60 * time.Second)
+	pp := page.Timeout(searchPageTimeout)
 
 	return &SearchAction{page: pp}
 }
@@ -100,14 +102,18 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 		return nil, err
 	}
 
-	// 注意 .Context(ctx) 会替换掉 NewSearchAction 里设的 60s deadline，必须在其后重新 Timeout，
-	// 否则搜索页不 stable 时 MustWaitStable/MustWait 会永久挂起（无 deadline 可依赖）。
-	page := s.page.Context(ctx).Timeout(60 * time.Second)
+	// .Context(ctx) 会替换 NewSearchAction 上的 deadline，因此必须在其后重新
+	// Timeout。搜索页包含长连接，不能用 WaitStable：页面即使已经有完整搜索
+	// 数据也可能一直不满足“网络稳定”，最后把一次空结果拖到一分钟以上。
+	page := s.page.Context(ctx).Timeout(searchPageTimeout)
 
 	searchURL := makeSearchURL(keyword)
-	page.MustNavigate(searchURL)
-	page.MustWaitStable()
-	page.MustWait(`() => window.__INITIAL_STATE__ !== undefined`)
+	if err := page.Navigate(searchURL); err != nil {
+		return nil, fmt.Errorf("打开搜索页失败: %w", err)
+	}
+	if err := page.Wait(rod.Eval(`() => window.__INITIAL_STATE__?.search?.feeds !== undefined`)); err != nil {
+		return nil, fmt.Errorf("等待搜索结果失败: %w", err)
+	}
 	humanize.Delay(ctx, humanize.AfterNavigate)
 
 	if len(pending) > 0 {

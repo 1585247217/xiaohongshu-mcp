@@ -1,0 +1,37 @@
+{
+  "backends": [
+    {
+      "name": "current-xhs",
+      "type": "http",
+      "enabled": true,
+      "method": "POST",
+      "url": "https://xiaohongshu-mcp-read.onrender.com/api/v1/feeds/search",
+      "bearer_token_env": "XHS_MCP_TOKEN",
+      "body": {"keyword": "{query}"},
+      "results_path": "data.feeds",
+      "title_path": "noteCard.displayTitle",
+      "url_path": "",
+      "url_template": "https://www.xiaohongshu.com/explore/{id}?xsec_token={xsecToken}&xsec_source=pc_search"
+    },
+    {
+      "name": "agent-reach",
+      "type": "command",
+      "enabled": false,
+      "argv": ["agent-reach", "search", "--platform", "xiaohongshu", "--json", "{query}"],
+      "results_path": "results",
+      "title_path": "title",
+      "url_path": "url"
+    },
+    {
+      "name": "generic-public-search",
+      "type": "http",
+      "enabled": false,
+      "method": "GET",
+      "url": "https://example.invalid/search",
+      "query_param": "q",
+      "results_path": "results",
+      "title_path": "title",
+      "url_path": "url"
+    }
+  ]
+}
