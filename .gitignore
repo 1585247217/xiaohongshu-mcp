@@ -49,3 +49,8 @@ docker/docker-compose.override.yml
 # 本地分析/调试产物，不进仓库
 debug/
 .worktrees/
+
+# Search benchmark configuration and responses may contain private URLs/tokens.
+benchmark/backends.json
+benchmark/results/
+__pycache__/
